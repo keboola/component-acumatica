@@ -1,0 +1,1 @@
+Acumatica Extractor long description
