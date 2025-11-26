@@ -1,4 +1,4 @@
-This Keboola extractor component connects to Acumatica ERP systems and extracts data from configured endpoints via the REST API.
+This Keboola extractor component connects to Acumatica ERP systems and extracts data from endpoints set up as configuration rows via the REST API.
 
 Key features:
 - Extract from any Acumatica REST API endpoint (Customer, SalesOrder, Invoice, etc.)

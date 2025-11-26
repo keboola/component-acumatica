@@ -1,1 +1,51 @@
-{}
+{
+  "type": "object",
+  "title": "Endpoint Configuration",
+  "required": [
+    "endpoint",
+    "version",
+    "output_table"
+  ],
+  "properties": {
+    "endpoint": {
+      "type": "string",
+      "title": "Endpoint Name",
+      "description": "Acumatica entity endpoint (e.g., Customer, SalesOrder, Invoice)",
+      "propertyOrder": 1
+    },
+    "version": {
+      "type": "string",
+      "title": "API Version",
+      "description": "Acumatica API version (e.g., 25.200.001)",
+      "default": "25.200.001",
+      "propertyOrder": 2
+    },
+    "output_table": {
+      "type": "string",
+      "title": "Output Table Name",
+      "description": "Name of the output table in Keboola Storage",
+      "propertyOrder": 3
+    },
+    "expand": {
+      "type": "string",
+      "title": "Expand",
+      "description": "Related entities to expand (e.g., MainContact, Details)",
+      "default": "",
+      "propertyOrder": 4
+    },
+    "filter": {
+      "type": "string",
+      "title": "Filter",
+      "description": "OData filter expression to filter records",
+      "default": "",
+      "propertyOrder": 5
+    },
+    "select": {
+      "type": "string",
+      "title": "Select",
+      "description": "OData select expression to choose specific fields",
+      "default": "",
+      "propertyOrder": 6
+    }
+  }
+}

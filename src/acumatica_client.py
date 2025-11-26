@@ -135,9 +135,7 @@ class AcumaticaClient:
         if not self._authenticated:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
 
-        endpoint_url = (
-            f"{self.base_url}/entity/{self.config.company}/{version}/{endpoint}"
-        )
+        endpoint_url = f"{self.base_url}/entity/{self.config.company}/{version}/{endpoint}"
 
         skip = 0
         has_more = True

@@ -76,16 +76,12 @@ class TestComponent(unittest.TestCase):
                 "#acumatica_username": "test_user",
                 "#acumatica_password": "test_pass",
                 "company": "TestCompany",
-                "endpoints": [
-                    {
-                        "endpoint": "Customer",
-                        "version": "23.200.001",
-                        "output_table": "customers",
-                        "expand": "",
-                        "filter": "",
-                        "select": "",
-                    }
-                ],
+                "endpoint": "Customer",
+                "version": "23.200.001",
+                "output_table": "customers",
+                "expand": "",
+                "filter": "",
+                "select": "",
                 "incremental_output": False,
                 "debug": False,
             }
@@ -102,8 +98,7 @@ class TestComponent(unittest.TestCase):
 
         # Mock the Acumatica client
         mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=None)
+        mock_client_class.return_value = mock_client
 
         # Mock entity data
         mock_entities = [
@@ -115,6 +110,9 @@ class TestComponent(unittest.TestCase):
         # Run component
         comp = Component()
         comp.run()
+
+        # Verify client was authenticated
+        mock_client.authenticate.assert_called_once()
 
         # Verify client was called correctly
         mock_client.get_entities.assert_called_once()
