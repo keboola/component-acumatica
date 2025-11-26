@@ -1,1 +1,1 @@
-Acumatica Extractor short description
+Cloud-based ERP and financial management software with integrated CRM, distribution, manufacturing, and project accounting capabilities.
