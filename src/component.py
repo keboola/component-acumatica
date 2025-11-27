@@ -39,17 +39,29 @@ class Component(ComponentBase):
             self.client = AcumaticaClient(config.get_api_config())
             self.client.authenticate()
 
-            self._extract_endpoint(config.get_endpoint_config(), config.incremental_output, config.page_size)
-
-            self._update_state(state)
-
-            logging.info("Acumatica data extraction completed successfully")
+            try:
+                self._extract_endpoint(config.get_endpoint_config(), config.incremental_output, config.page_size)
+                self._update_state(state)
+                logging.info("Acumatica data extraction completed successfully")
+            finally:
+                # Always logout to free up API user slot
+                self.client.logout()
 
         except UserException:
             raise
         except Exception as e:
+            error_msg = str(e)
+
+            # Check for API login limit in the error message
+            if "too many 500 error responses" in error_msg and "auth/login" in error_msg:
+                raise UserException(
+                    "API Login Limit reached. The Acumatica instance has too many active API sessions. "
+                    "Please wait for existing sessions to expire or contact your Acumatica administrator "
+                    "to increase the API user limit or manually log out active API users."
+                )
+
             logging.exception("Unhandled error during extraction")
-            raise UserException(f"Extraction failed: {str(e)}")
+            raise UserException(f"Extraction failed: {error_msg}")
 
     def _validate_and_get_configuration(self) -> Configuration:
         """
