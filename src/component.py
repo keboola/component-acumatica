@@ -11,7 +11,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from keboola.component.base import ComponentBase
+import requests
+from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
 from acumatica_client import AcumaticaClient
@@ -231,6 +232,55 @@ class Component(ComponentBase):
         state["last_run_timestamp"] = datetime.now().isoformat()
         self.write_state_file(state)
         logging.debug("State file updated")
+
+    @sync_action("listTenantVersions")
+    def list_tenant_versions(self):
+        """
+        Fetch available tenant/version combinations from Acumatica /entity endpoint.
+
+        Returns list of tenant/version strings for dropdown selection in UI.
+        """
+        try:
+            # Get configuration parameters
+            params = self.configuration.parameters
+            acumatica_url = params.get("acumatica_url")
+
+            if not acumatica_url:
+                raise UserException("Acumatica URL is required to list tenant/version combinations")
+
+            # Remove trailing slash
+            base_url = acumatica_url.rstrip("/")
+            entity_url = f"{base_url}/entity/"
+
+            logging.info(f"Fetching tenant/version combinations from {entity_url}")
+
+            # Fetch endpoint list
+            response = requests.get(entity_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract tenant/version combinations
+            tenant_versions = []
+            seen = set()
+
+            for endpoint in data.get("endpoints", []):
+                tenant = endpoint.get("name")
+                version = endpoint.get("version")
+
+                if tenant and version:
+                    combo = f"{tenant}/{version}"
+                    if combo not in seen:
+                        tenant_versions.append({"label": combo, "value": combo})
+                        seen.add(combo)
+
+            # Sort by tenant name, then version
+            tenant_versions.sort(key=lambda x: x["value"])
+
+            logging.info(f"Found {len(tenant_versions)} tenant/version combinations")
+            return tenant_versions
+
+        except requests.exceptions.RequestException as e:
+            raise UserException(f"Failed to fetch tenant/version combinations: {str(e)}")
 
 
 """

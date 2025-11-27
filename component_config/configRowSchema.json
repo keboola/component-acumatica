@@ -9,9 +9,16 @@
   "properties": {
     "tenant_version": {
       "type": "string",
-      "title": "Tenant/Version",
-      "description": "Acumatica tenant and API version in format: `tenant/version` (e.g., `Default/25.200.001`)",
-      "propertyOrder": 1
+      "title": "Tenant / Version",
+      "description": "Acumatica tenant and API version in format: tenant/version (e.g., Default/25.200.001)",
+      "propertyOrder": 1,
+      "enum": [],
+      "options": {
+        "async": {
+          "action": "listTenantVersions",
+          "loadingMessage": "Loading available tenant/version combinations..."
+        }
+      }
     },
     "endpoint": {
       "type": "string",
