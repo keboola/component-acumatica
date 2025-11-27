@@ -4,8 +4,7 @@
   "required": [
     "acumatica_url",
     "#acumatica_username",
-    "#acumatica_password",
-    "company"
+    "#acumatica_password"
   ],
   "properties": {
     "acumatica_url": {
@@ -29,33 +28,27 @@
       "format": "password",
       "propertyOrder": 3
     },
-    "company": {
-      "type": "string",
-      "title": "Company",
-      "description": "Company name in Acumatica to connect to",
-      "propertyOrder": 4
-    },
     "page_size": {
       "type": "integer",
       "title": "Page Size",
       "description": "Number of records to fetch per API request",
       "default": 2500,
       "minimum": 1,
-      "propertyOrder": 5
+      "propertyOrder": 4
     },
     "incremental_output": {
       "type": "boolean",
       "title": "Incremental Output",
       "description": "Enable incremental loading mode for output tables",
       "default": false,
-      "propertyOrder": 6
+      "propertyOrder": 5
     },
     "debug": {
       "type": "boolean",
       "title": "Debug Mode",
       "description": "Enable debug logging for troubleshooting",
       "default": false,
-      "propertyOrder": 7
+      "propertyOrder": 6
     }
   }
 }

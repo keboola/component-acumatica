@@ -75,12 +75,11 @@ class TestComponent(unittest.TestCase):
                 "acumatica_url": "https://test.acumatica.com",
                 "#acumatica_username": "test_user",
                 "#acumatica_password": "test_pass",
-                "company": "TestCompany",
+                "tenant_version": "Default/23.200.001",
                 "endpoint": "Customer",
-                "version": "23.200.001",
                 "output_table": "customers",
                 "expand": "",
-                "filter": "",
+                "filter_expr": "",
                 "select": "",
                 "incremental_output": False,
                 "debug": False,
@@ -117,8 +116,8 @@ class TestComponent(unittest.TestCase):
         # Verify client was called correctly
         mock_client.get_entities.assert_called_once()
         call_args = mock_client.get_entities.call_args
+        self.assertEqual(call_args.kwargs["tenant_version"], "Default/23.200.001")
         self.assertEqual(call_args.kwargs["endpoint"], "Customer")
-        self.assertEqual(call_args.kwargs["version"], "23.200.001")
 
         # Verify output file was created
         output_file = self.test_data_dir / "out" / "tables" / "customers.csv"

@@ -18,17 +18,16 @@ class AcumaticaApiConfig:
     acumatica_url: str
     acumatica_username: str
     acumatica_password: str
-    company: str
 
 
 @dataclass
 class EndpointConfig:
     """Configuration for a single Acumatica endpoint to extract."""
 
+    tenant_version: str  # Format: "tenant/version" (e.g., "Default/25.200.001")
     endpoint: str
-    version: str
     expand: str
-    filter: str
+    filter_expr: str
     select: str
     output_table: str
 
@@ -40,14 +39,13 @@ class Configuration(BaseModel):
     acumatica_url: str  # Full URL including instance path (e.g., https://your-instance.acumatica.com/AcumaticaERP1)
     acumatica_username: str = Field(alias="#acumatica_username")
     acumatica_password: str = Field(alias="#acumatica_password")
-    company: str
 
     # Endpoint settings (from row config)
-    # Final URL pattern: {acumatica_url}/entity/{company}/{endpoint}/{version}/
+    # Final URL pattern: {acumatica_url}/entity/{tenant}/{version}/{endpoint}
+    tenant_version: str  # Format: "tenant/version" (e.g., "Default/25.200.001")
     endpoint: str  # e.g., 'Customer', 'SalesOrder'
-    version: str  # API version e.g., '23.200.001'
     expand: str = ""  # OData $expand - related entities to include (e.g., 'MainContact,BillingAddress')
-    filter: str = ""  # OData $filter - filter expression (e.g., "Status eq 'Active'")
+    filter_expr: str = ""  # OData $filter - filter expression (e.g., "Status eq 'Active'")
     select: str = ""  # OData $select - specific fields to retrieve (e.g., 'CustomerID,CustomerName')
 
     output_table: str
@@ -82,16 +80,15 @@ class Configuration(BaseModel):
             acumatica_url=self.acumatica_url,
             acumatica_username=self.acumatica_username,
             acumatica_password=self.acumatica_password,
-            company=self.company,
         )
 
     def get_endpoint_config(self) -> EndpointConfig:
         """Extract endpoint-specific configuration."""
         return EndpointConfig(
+            tenant_version=self.tenant_version,
             endpoint=self.endpoint,
-            version=self.version,
             expand=self.expand,
-            filter=self.filter,
+            filter_expr=self.filter_expr,
             select=self.select,
             output_table=self.output_table,
         )

@@ -70,7 +70,6 @@ class AcumaticaClient:
         login_data = {
             "name": self.config.acumatica_username,
             "password": self.config.acumatica_password,
-            "company": self.config.company,
         }
 
         logging.info(f"Authenticating with Acumatica at {self.base_url}")
@@ -104,8 +103,8 @@ class AcumaticaClient:
 
     def get_entities(
         self,
+        tenant_version: str,
         endpoint: str,
-        version: str,
         expand: str = "",
         filter_expr: str = "",
         select: str = "",
@@ -118,8 +117,8 @@ class AcumaticaClient:
         Automatically handles pagination using $top and $skip.
 
         Args:
+            tenant_version: Tenant and version string (e.g., 'Default/25.200.001').
             endpoint: Entity endpoint name (e.g., 'Customer', 'SalesOrder').
-            version: API version (e.g., '23.200.001').
             expand: Related entities to expand (e.g., 'MainContact').
             filter_expr: OData filter expression.
             select: OData select expression for specific fields.
@@ -135,12 +134,12 @@ class AcumaticaClient:
         if not self._authenticated:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
 
-        endpoint_url = f"{self.base_url}/entity/{self.config.company}/{version}/{endpoint}"
+        endpoint_url = f"{self.base_url}/entity/{tenant_version}/{endpoint}"
 
         skip = 0
         has_more = True
 
-        logging.info(f"Fetching entities from {endpoint} (version: {version})")
+        logging.info(f"Fetching entities from {endpoint} (tenant/version: {tenant_version})")
 
         while has_more:
             params: dict[str, str | int] = {

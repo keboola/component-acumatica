@@ -108,10 +108,10 @@ class Component(ComponentBase):
         logging.info(f"Extracting endpoint: {endpoint_config.endpoint}")
 
         entities = self.client.get_entities(
+            tenant_version=endpoint_config.tenant_version,
             endpoint=endpoint_config.endpoint,
-            version=endpoint_config.version,
             expand=endpoint_config.expand,
-            filter_expr=endpoint_config.filter,
+            filter_expr=endpoint_config.filter_expr,
             select=endpoint_config.select,
             top=page_size,
         )
