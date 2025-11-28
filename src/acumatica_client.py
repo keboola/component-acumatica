@@ -211,3 +211,76 @@ class AcumaticaClient:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit with automatic logout."""
         self.logout()
+
+    def get_tenant_versions(self) -> list[dict[str, str]]:
+        """
+        Fetch available tenant/version combinations from Acumatica /entity endpoint.
+
+        Returns:
+            List of dicts with 'label' and 'value' keys for each tenant/version.
+
+        Raises:
+            requests.exceptions.RequestException: If request fails.
+        """
+        entity_url = f"{self.base_url}/entity/"
+
+        logging.info(f"Fetching tenant/version combinations from {entity_url}")
+
+        response = requests.get(entity_url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        tenant_versions = set()
+
+        for endpoint in data.get("endpoints", []):
+            tenant = endpoint.get("name")
+            version = endpoint.get("version")
+
+            if tenant and version:
+                tenant_versions.add(f"{tenant}/{version}")
+
+        result = [{"label": tv, "value": tv} for tv in sorted(tenant_versions)]
+        logging.info(f"Found {len(result)} tenant/version combinations")
+        return result
+
+    def get_endpoints(self, tenant_version: str) -> list[dict[str, str]]:
+        """
+        Fetch available endpoints from Acumatica swagger.json for selected tenant/version.
+
+        Args:
+            tenant_version: Tenant/version string (e.g., 'Default/25.200.001').
+
+        Returns:
+            List of dicts with 'label' and 'value' keys for each endpoint.
+
+        Raises:
+            requests.exceptions.RequestException: If request fails.
+        """
+        swagger_url = f"{self.base_url}/entity/{tenant_version}/swagger.json"
+
+        logging.info(f"Fetching swagger from {swagger_url}")
+
+        response = requests.get(swagger_url, timeout=30)
+        response.raise_for_status()
+        swagger_data = response.json()
+
+        entity_names = set()
+
+        for path, methods in swagger_data.get("paths", {}).items():
+            if "get" not in methods:
+                continue
+
+            path_parts = path.strip("/").split("/")
+            if not path_parts or path_parts[0].startswith("$"):
+                continue
+
+            entity_name = path_parts[0]
+
+            is_collection_endpoint = len(path_parts) == 1 and "{" not in path
+
+            if is_collection_endpoint:
+                entity_names.add(entity_name)
+
+        endpoints = [{"label": name, "value": name} for name in sorted(entity_names)]
+        logging.info(f"Found {len(endpoints)} GET endpoints")
+        return endpoints

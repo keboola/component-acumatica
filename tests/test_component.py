@@ -138,9 +138,8 @@ class TestComponent(unittest.TestCase):
         config_path = self.test_data_dir / "config.json"
         config_path.write_text(json.dumps(config))
 
-        comp = Component()
         with self.assertRaises(UserException):
-            comp.run()
+            Component()
 
 
 if __name__ == "__main__":

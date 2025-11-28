@@ -28,20 +28,22 @@ class Component(ComponentBase):
 
     def __init__(self):
         super().__init__()
+        self.config = Configuration(**self.configuration.parameters)
+        self.client = AcumaticaClient(self.config.get_api_config())
 
     def run(self) -> None:
         """Main execution - orchestrates the component workflow."""
         try:
-            config = self._validate_and_get_configuration()
             state = self._load_previous_state()
 
             logging.info("Starting Acumatica data extraction")
 
-            self.client = AcumaticaClient(config.get_api_config())
             self.client.authenticate()
 
             try:
-                self._extract_endpoint(config.get_endpoint_config(), config.incremental_output, config.page_size)
+                self._extract_endpoint(
+                    self.config.get_endpoint_config(), self.config.incremental_output, self.config.page_size
+                )
                 self._update_state(state)
                 logging.info("Acumatica data extraction completed successfully")
             finally:
@@ -63,22 +65,6 @@ class Component(ComponentBase):
 
             logging.exception("Unhandled error during extraction")
             raise UserException(f"Extraction failed: {error_msg}")
-
-    def _validate_and_get_configuration(self) -> Configuration:
-        """
-        Validate and parse component configuration.
-
-        Returns:
-            Validated Configuration object.
-
-        Raises:
-            UserException: If configuration is invalid.
-        """
-        try:
-            config = Configuration(**self.configuration.parameters)
-            return config
-        except Exception as e:
-            raise UserException(f"Configuration error: {str(e)}")
 
     def _load_previous_state(self) -> dict[str, Any]:
         """
@@ -241,46 +227,25 @@ class Component(ComponentBase):
         Returns list of tenant/version strings for dropdown selection in UI.
         """
         try:
-            # Get configuration parameters
-            params = self.configuration.parameters
-            acumatica_url = params.get("acumatica_url")
-
-            if not acumatica_url:
-                raise UserException("Acumatica URL is required to list tenant/version combinations")
-
-            # Remove trailing slash
-            base_url = acumatica_url.rstrip("/")
-            entity_url = f"{base_url}/entity/"
-
-            logging.info(f"Fetching tenant/version combinations from {entity_url}")
-
-            # Fetch endpoint list
-            response = requests.get(entity_url, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-
-            # Extract tenant/version combinations
-            tenant_versions = []
-            seen = set()
-
-            for endpoint in data.get("endpoints", []):
-                tenant = endpoint.get("name")
-                version = endpoint.get("version")
-
-                if tenant and version:
-                    combo = f"{tenant}/{version}"
-                    if combo not in seen:
-                        tenant_versions.append({"label": combo, "value": combo})
-                        seen.add(combo)
-
-            # Sort by tenant name, then version
-            tenant_versions.sort(key=lambda x: x["value"])
-
-            logging.info(f"Found {len(tenant_versions)} tenant/version combinations")
-            return tenant_versions
-
+            return self.client.get_tenant_versions()
         except requests.exceptions.RequestException as e:
             raise UserException(f"Failed to fetch tenant/version combinations: {str(e)}")
+
+    @sync_action("listEndpoints")
+    def list_endpoints(self):
+        """
+        Fetch available endpoints from Acumatica swagger.json for selected tenant/version.
+
+        Returns list of endpoints for dropdown selection in UI.
+        """
+        try:
+            tenant_version = self.configuration.parameters.get("tenant_version")
+            if not tenant_version:
+                raise UserException("Tenant/Version must be selected first to list endpoints")
+
+            return self.client.get_endpoints(tenant_version)
+        except requests.exceptions.RequestException as e:
+            raise UserException(f"Failed to fetch endpoints: {str(e)}")
 
 
 """

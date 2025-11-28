@@ -16,7 +16,7 @@
       "options": {
         "async": {
           "action": "listTenantVersions",
-          "loadingMessage": "Loading available tenant/version combinations..."
+          "label": "Load Tenants & Versions"
         }
       }
     },
@@ -24,7 +24,15 @@
       "type": "string",
       "title": "Endpoint Name",
       "description": "Acumatica entity endpoint (e.g., Customer, SalesOrder, Invoice)",
-      "propertyOrder": 2
+      "propertyOrder": 2,
+      "enum": [],
+      "options": {
+        "async": {
+          "action": "listEndpoints",
+          "label": "Load Endpoints",
+          "watchFor": ["tenant_version"]
+        }
+      }
     },
     "output_table": {
       "type": "string",
