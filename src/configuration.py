@@ -21,6 +21,15 @@ class AcumaticaApiConfig:
 
 
 @dataclass
+class Destination:
+    """Configuration for destination settings."""
+
+    output_table_name: str
+    load_type: str = "full_load"
+    primary_keys: str = ""
+
+
+@dataclass
 class EndpointConfig:
     """Configuration for a single Acumatica endpoint to extract."""
 
@@ -29,18 +38,23 @@ class EndpointConfig:
     expand: str
     filter_expr: str
     select: str
-    output_table: str
+    output_table_name: str
+    load_type: str
+    primary_keys: str
 
 
 class Configuration(BaseModel):
     """Main configuration for Acumatica extractor component."""
 
-    # Connection settings
+    # Global configuration settings
     acumatica_url: str  # Full URL including instance path (e.g., https://your-instance.acumatica.com/AcumaticaERP1)
     acumatica_username: str = Field(alias="#acumatica_username")
     acumatica_password: str = Field(alias="#acumatica_password")
 
-    # Endpoint settings (from row config)
+    page_size: int = 2500
+    debug: bool = False
+
+    # Configuration row settings
     # Final URL pattern: {acumatica_url}/entity/{tenant}/{version}/{endpoint}
     tenant_version: str  # Format: "tenant/version" (e.g., "Default/25.200.001")
     endpoint: str  # e.g., 'Customer', 'SalesOrder'
@@ -48,12 +62,10 @@ class Configuration(BaseModel):
     filter_expr: str = ""  # OData $filter - filter expression (e.g., "Status eq 'Active'")
     select: str = ""  # OData $select - specific fields to retrieve (e.g., 'CustomerID,CustomerName')
 
-    output_table: str
+    override_global_page_size: bool = False
+    row_page_size: int = 2500
 
-    # Global settings
-    page_size: int = 2500
-    incremental_output: bool = False
-    debug: bool = False
+    destination: dict = {}
 
     def __init__(self, **data):
         try:
@@ -84,11 +96,29 @@ class Configuration(BaseModel):
 
     def get_endpoint_config(self) -> EndpointConfig:
         """Extract endpoint-specific configuration."""
+        dest = self.destination if self.destination else {}
+        output_table_name = dest.get("output_table_name", "") or self.endpoint
+        load_type = dest.get("load_type", "full_load")
+        primary_keys = dest.get("primary_keys", "")
+
         return EndpointConfig(
             tenant_version=self.tenant_version,
             endpoint=self.endpoint,
             expand=self.expand,
             filter_expr=self.filter_expr,
             select=self.select,
-            output_table=self.output_table,
+            output_table_name=output_table_name,
+            load_type=load_type,
+            primary_keys=primary_keys,
         )
+
+    def get_effective_page_size(self) -> int:
+        """
+        Get the effective page size to use for this configuration.
+
+        Returns row_page_size if override_global_page_size is True,
+        otherwise returns the global page_size.
+        """
+        if self.override_global_page_size:
+            return self.row_page_size
+        return self.page_size

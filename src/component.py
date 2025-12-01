@@ -11,7 +11,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import requests
 from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
@@ -42,7 +41,8 @@ class Component(ComponentBase):
 
             try:
                 self._extract_endpoint(
-                    self.config.get_endpoint_config(), self.config.incremental_output, self.config.page_size
+                    self.config.get_endpoint_config(),
+                    self.config.get_effective_page_size(),
                 )
                 self._update_state(state)
                 logging.info("Acumatica data extraction completed successfully")
@@ -80,16 +80,13 @@ class Component(ComponentBase):
     def _extract_endpoint(
         self,
         endpoint_config: EndpointConfig,
-        incremental: bool,
         page_size: int,
     ) -> None:
         """
         Extract data from a single Acumatica endpoint.
 
         Args:
-            client: Authenticated Acumatica client.
             endpoint_config: Configuration for the endpoint to extract.
-            incremental: Whether to use incremental output.
             page_size: Number of records to fetch per API request.
         """
         logging.info(f"Extracting endpoint: {endpoint_config.endpoint}")
@@ -103,7 +100,8 @@ class Component(ComponentBase):
             top=page_size,
         )
 
-        records_written = self._write_entities_to_table(entities, endpoint_config.output_table, incremental)
+        incremental = endpoint_config.load_type == "incremental_load"
+        records_written = self._write_entities_to_table(entities, endpoint_config.output_table_name, incremental)
 
         logging.info(f"Extracted {records_written} records from {endpoint_config.endpoint}")
 
@@ -226,10 +224,7 @@ class Component(ComponentBase):
 
         Returns list of tenant/version strings for dropdown selection in UI.
         """
-        try:
-            return self.client.get_tenant_versions()
-        except requests.exceptions.RequestException as e:
-            raise UserException(f"Failed to fetch tenant/version combinations: {str(e)}")
+        return self.client.get_tenant_versions()
 
     @sync_action("listEndpoints")
     def list_endpoints(self):
@@ -238,14 +233,11 @@ class Component(ComponentBase):
 
         Returns list of endpoints for dropdown selection in UI.
         """
-        try:
-            tenant_version = self.configuration.parameters.get("tenant_version")
-            if not tenant_version:
-                raise UserException("Tenant/Version must be selected first to list endpoints")
+        tenant_version = self.configuration.parameters.get("tenant_version")
+        if not tenant_version:
+            raise UserException("Tenant/Version must be selected first to list endpoints")
 
-            return self.client.get_endpoints(tenant_version)
-        except requests.exceptions.RequestException as e:
-            raise UserException(f"Failed to fetch endpoints: {str(e)}")
+        return self.client.get_endpoints(tenant_version)
 
 
 """

@@ -15,17 +15,20 @@ A Keboola component for extracting data from Acumatica ERP system via its REST A
     - [Acumatica URL](#acumatica-url)
     - [Username](#username)
     - [Password](#password)
-    - [Company](#company)
+    - [Page Size](#page-size)
   - [Endpoint Configuration](#endpoint-configuration)
+    - [Tenant / Version](#tenant--version)
     - [Endpoint Name](#endpoint-name)
-    - [API Version](#api-version)
-    - [Output Table Name](#output-table-name)
     - [Expand (Optional)](#expand-optional)
     - [Filter (Optional)](#filter-optional)
     - [Select (Optional)](#select-optional)
   - [Additional Options](#additional-options)
-    - [Incremental Output](#incremental-output)
-    - [Debug Mode](#debug-mode)
+    - [Override Global Page Size](#override-global-page-size)
+    - [Page Size for Current Endpoint](#page-size-for-current-endpoint)
+    - [Destination](#destination)
+      - [Storage Table Name](#storage-table-name)
+      - [Load Type](#load-type)
+      - [Primary Keys](#primary-keys)
 - [Example Configuration](#example-configuration)
 - [Output](#output)
   - [Data Flattening](#data-flattening)
@@ -38,7 +41,6 @@ A Keboola component for extracting data from Acumatica ERP system via its REST A
     - [Endpoint Not Found](#endpoint-not-found)
     - [No Data Returned](#no-data-returned)
     - [Rate Limiting](#rate-limiting)
-  - [Debug Mode](#debug-mode-1)
 - [License](#license)
 
 Description
@@ -76,7 +78,6 @@ Features
 | Data Flattening        | Automatically flattens nested JSON structures to CSV     |
 | Incremental Loading    | Optional incremental mode for output tables              |
 | Retry Logic            | Built-in retry mechanism for failed API requests         |
-| Debug Mode             | Detailed logging for troubleshooting                     |
 
 Supported Endpoints
 ===================
@@ -111,22 +112,19 @@ Your Acumatica login username. This field is encrypted in storage.
 ### Password
 Your Acumatica login password. This field is encrypted in storage.
 
-### Company
-The company name configured in your Acumatica instance to connect to.
+### Page Size
+Number of records to fetch per API request (default: 2500). This is a global setting that can be overridden per endpoint.
 
 Endpoint Configuration
 ----------------------
 
 Configure one or more endpoints to extract. For each endpoint, specify:
 
+### Tenant / Version
+Acumatica tenant and API version in format: `tenant/version` (e.g., `Default/25.200.001`). You can find available tenants and versions using the "Load Tenants & Versions" sync action.
+
 ### Endpoint Name
-The Acumatica entity endpoint name (e.g., `Customer`, `SalesOrder`, `Invoice`).
-
-### API Version
-The API version to use (e.g., `23.200.001`). You can find this in your Acumatica API documentation.
-
-### Output Table Name
-The name for the output table in Keboola Storage (e.g., `customers`, `sales_orders`).
+The Acumatica entity endpoint name (e.g., `Customer`, `SalesOrder`, `Invoice`). Use the "Load Endpoints" sync action to see available endpoints for your selected tenant/version.
 
 ### Expand (Optional)
 Related entities to expand in the response. For example:
@@ -148,41 +146,76 @@ OData select expression to retrieve specific fields only. Examples:
 Additional Options
 ------------------
 
-### Incremental Output
-Enable incremental loading mode for output tables. When enabled, data is appended rather than replaced.
+### Override Global Page Size
+Enable to use a custom page size for this specific endpoint instead of the global page size setting.
 
-### Debug Mode
-Enable detailed debug logging for troubleshooting. Useful when configuring new endpoints or investigating issues.
+### Page Size for Current Endpoint
+Number of records to fetch per API request for this specific endpoint. Only visible when "Override Global Page Size" is enabled.
+
+### Destination
+
+Configure output table settings:
+
+#### Storage Table Name
+The name for the output table in Keboola Storage (e.g., `customers`, `sales_orders`). If not specified, defaults to the endpoint name.
+
+#### Load Type
+Choose between:
+- **Full Load**: The destination table will be overwritten with each run
+- **Incremental Load**: Data will be upserted into the destination table. Tables with a primary key will have rows updated, tables without a primary key will have rows appended.
+
+#### Primary Keys
+Select primary key columns for incremental loads. Run the component once with full load, then use the "Get Output Columns" sync action to see available columns. Required for incremental loads.
+
 
 Example Configuration
 =====================
 
+**Global Configuration (configSchema.json):**
 ```json
 {
   "acumatica_url": "https://your-instance.acumatica.com",
   "#acumatica_username": "admin",
   "#acumatica_password": "your-password",
-  "company": "MyCompany",
-  "endpoints": [
-    {
-      "endpoint": "Customer",
-      "version": "23.200.001",
-      "output_table": "customers",
-      "expand": "MainContact",
-      "filter": "Status eq 'Active'",
-      "select": ""
-    },
-    {
-      "endpoint": "SalesOrder",
-      "version": "23.200.001",
-      "output_table": "sales_orders",
-      "expand": "Details",
-      "filter": "OrderDate gt '2024-01-01'",
-      "select": ""
-    }
-  ],
+  "page_size": 2500,
   "incremental_output": false,
   "debug": false
+}
+```
+
+**Row Configuration (configRowSchema.json):**
+```json
+{
+  "tenant_version": "Default/25.200.001",
+  "endpoint": "Customer",
+  "expand": "MainContact",
+  "filter_expr": "Status eq 'Active'",
+  "select": "",
+  "override_global_page_size": false,
+  "row_page_size": 2500,
+  "destination": {
+    "output_table_name": "customers",
+    "load_type": "full_load",
+    "primary_keys": ""
+  }
+}
+```
+
+**Another Row Configuration Example (with incremental load):**
+```json
+{
+  "tenant_version": "Default/25.200.001",
+  "endpoint": "SalesOrder",
+  "expand": "Details",
+  "filter_expr": "OrderDate gt '2024-01-01'",
+  "select": "",
+  "override_global_page_size": true,
+  "row_page_size": 1000,
+  "destination": {
+    "output_table_name": "sales_orders",
+    "load_type": "incremental_load",
+    "primary_keys": "OrderNbr"
+  }
 }
 ```
 
@@ -191,11 +224,12 @@ Output
 
 The component creates one CSV table for each configured endpoint:
 
-- **Table Names**: As specified in the `output_table` configuration
+- **Table Names**: As specified in the `destination.output_table_name` configuration (or defaults to endpoint name)
 - **Columns**: Automatically detected from the first record
 - **Nested Data**: Flattened with underscore notation (e.g., `MainContact_Email`)
 - **Lists**: Converted to string representation
 - **Manifest**: Automatically created for each output table
+- **Load Mode**: Determined by `destination.load_type` (full_load or incremental_load)
 
 Data Flattening
 ---------------
@@ -304,20 +338,10 @@ Common Issues
 ### No Data Returned
 - Check your filter expression syntax
 - Verify data exists matching your filter criteria
-- Enable debug mode to see detailed API requests
 
 ### Rate Limiting
 - The component includes automatic retry logic
 - Contact your Acumatica administrator if rate limits are too restrictive
-
-Debug Mode
-----------
-
-Enable debug mode in the configuration to see:
-- Detailed API request/response information
-- Authentication flow details
-- Pagination progress
-- Data transformation steps
 
 License
 =======

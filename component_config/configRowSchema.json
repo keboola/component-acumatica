@@ -3,8 +3,7 @@
   "title": "Endpoint Configuration",
   "required": [
     "tenant_version",
-    "endpoint",
-    "output_table"
+    "endpoint"
   ],
   "properties": {
     "tenant_version": {
@@ -30,36 +29,106 @@
         "async": {
           "action": "listEndpoints",
           "label": "Load Endpoints",
-          "watchFor": ["tenant_version"]
+          "watchFor": [
+            "tenant_version"
+          ]
         }
       }
-    },
-    "output_table": {
-      "type": "string",
-      "title": "Output Table Name",
-      "description": "Name of the output table in Keboola Storage",
-      "propertyOrder": 3
     },
     "expand": {
       "type": "string",
       "title": "Expand",
       "description": "Related entities to expand (e.g., MainContact, Details)",
       "default": "",
-      "propertyOrder": 4
+      "propertyOrder": 3
     },
     "filter_expr": {
       "type": "string",
       "title": "Filter",
       "description": "OData filter expression to filter records",
       "default": "",
-      "propertyOrder": 5
+      "propertyOrder": 4
     },
     "select": {
       "type": "string",
       "title": "Select",
       "description": "OData select expression to choose specific fields",
       "default": "",
+      "propertyOrder": 5
+    },
+    "override_global_page_size": {
+      "type": "boolean",
+      "format": "checkbox",
+      "title": "Override Global Page Size",
+      "description": "Enable to use a custom page size for this endpoint instead of the global page size",
+      "default": false,
       "propertyOrder": 6
+    },
+    "row_page_size": {
+      "type": "integer",
+      "title": "Page Size for Current Endpoint",
+      "description": "Number of records to fetch per API request for this specific endpoint",
+      "default": 2500,
+      "minimum": 1,
+      "propertyOrder": 7,
+      "options": {
+        "dependencies": {
+          "override_global_page_size": true
+        }
+      }
+    },
+    "destination": {
+      "type": "object",
+      "title": "Destination",
+      "propertyOrder": 8,
+      "required": [
+        "load_type"
+      ],
+      "properties": {
+        "output_table_name": {
+          "type": "string",
+          "title": "Storage Table Name",
+          "description": "Name of the table stored in Storage. Defaults to report type name if not specified.",
+          "default": "",
+          "propertyOrder": 1
+        },
+        "load_type": {
+          "type": "string",
+          "format": "select",
+          "title": "Load Type",
+          "description": "If Full load is used, the destination table will be overwritten every run. If incremental load is used, data will be upserted into the destination table. Tables with a primary key will have rows updated, tables without a primary key will have rows appended.",
+          "default": "full_load",
+          "propertyOrder": 2,
+          "enum": [
+            "full_load",
+            "incremental_load"
+          ],
+          "options": {
+            "enum_titles": [
+              "Full Load",
+              "Incremental Load"
+            ]
+          }
+        },
+        "primary_keys": {
+          "type": "string",
+          "format": "select",
+          "title": "Primary Keys",
+          "description": "Select primary key columns for incremental loads. Run the component once with full load, then use the 'Get Output Columns' sync action to see available columns. Required for incremental loads.",
+          "propertyOrder": 3,
+          "enum": [],
+          "options": {
+            "async": {
+              "action": "get_output_columns",
+              "label": "GET COLUMNS"
+            },
+            "creatable": true,
+            "dependencies": {
+              "load_type": "incremental_load"
+            }
+          }
+        }
+      }
     }
   }
 }

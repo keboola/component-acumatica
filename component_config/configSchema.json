@@ -35,20 +35,6 @@
       "default": 2500,
       "minimum": 1,
       "propertyOrder": 4
-    },
-    "incremental_output": {
-      "type": "boolean",
-      "title": "Incremental Output",
-      "description": "Enable incremental loading mode for output tables",
-      "default": false,
-      "propertyOrder": 5
-    },
-    "debug": {
-      "type": "boolean",
-      "title": "Debug Mode",
-      "description": "Enable debug logging for troubleshooting",
-      "default": false,
-      "propertyOrder": 6
     }
   }
 }

@@ -77,11 +77,16 @@ class TestComponent(unittest.TestCase):
                 "#acumatica_password": "test_pass",
                 "tenant_version": "Default/23.200.001",
                 "endpoint": "Customer",
-                "output_table": "customers",
                 "expand": "",
                 "filter_expr": "",
                 "select": "",
-                "incremental_output": False,
+                "override_global_page_size": False,
+                "row_page_size": 2500,
+                "destination": {
+                    "output_table_name": "customers",
+                    "load_type": "full_load",
+                    "primary_keys": "",
+                },
                 "debug": False,
             }
         }
