@@ -175,8 +175,6 @@ Example Configuration
 ```json
 {
   "acumatica_url": "https://your-instance.acumatica.com",
-  "#acumatica_username": "admin",
-  "#acumatica_password": "your-password",
   "page_size": 2500,
   "incremental_output": false,
   "debug": false

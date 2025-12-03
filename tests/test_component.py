@@ -73,7 +73,7 @@ class TestComponent(unittest.TestCase):
         return {
             "parameters": {
                 "acumatica_url": "https://test.acumatica.com",
-                "#acumatica_username": "test_user",
+                "acumatica_username": "test_user",
                 "#acumatica_password": "test_pass",
                 "tenant_version": "Default/23.200.001",
                 "endpoint": "Customer",

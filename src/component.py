@@ -5,6 +5,7 @@ Extracts data from Acumatica ERP system via REST API and saves to Keboola tables
 """
 
 import csv
+import json
 import logging
 import sys
 from collections.abc import Iterator
@@ -18,6 +19,8 @@ from acumatica_client import AcumaticaClient
 from configuration import Configuration, EndpointConfig
 from swagger_parser import SwaggerParser
 
+KEY_STATE_OAUTH_TOKEN_DICT = "#oauth_token_dict"
+
 
 class Component(ComponentBase):
     """
@@ -29,20 +32,141 @@ class Component(ComponentBase):
     def __init__(self):
         super().__init__()
         self.config = Configuration(**self.configuration.parameters)
-        self.client = AcumaticaClient(self.config.get_api_config())
+        self._state = None  # Cache state in memory
+        self._init_client()
+
+    def _init_client(self) -> None:
+        """Initialize Acumatica client from state or OAuth credentials."""
+        logging.debug("Initializing Acumatica client")
+        state = self.get_state_file()
+        state_oauth_token = state.get(KEY_STATE_OAUTH_TOKEN_DICT)
+
+        if self._state_contains_oauth_token(state_oauth_token):
+            logging.debug("Initializing client from state")
+            self._init_client_from_state(state_oauth_token)
+        else:
+            logging.debug("Initializing client from OAuth credentials or username/password")
+            self._init_client_from_config()
+
+    def _state_contains_oauth_token(self, state_oauth_token: Any) -> bool:
+        """Check if state contains valid OAuth token."""
+        if not state_oauth_token:
+            return False
+        oauth_data = self._load_state_oauth(state_oauth_token)
+        return bool(oauth_data.get("access_token"))
+
+    @staticmethod
+    def _load_state_oauth(state_oauth_token: Any) -> dict:
+        """Load OAuth data from state, handling both string and dict formats."""
+        if isinstance(state_oauth_token, str):
+            return json.loads(state_oauth_token)
+        elif isinstance(state_oauth_token, dict):
+            return state_oauth_token
+        else:
+            return {}
+
+    def _init_client_from_state(self, state_oauth_token: Any) -> None:
+        """Initialize client using OAuth credentials from state."""
+        oauth_data = self._load_state_oauth(state_oauth_token)
+
+        # Try to get client credentials from OAuth credentials object
+        try:
+            oauth_creds = self.configuration.oauth_credentials
+            client_id = getattr(oauth_creds, "#appKey", None) or getattr(oauth_creds, "appKey", None)
+            client_secret = getattr(oauth_creds, "#appSecret", None) or getattr(oauth_creds, "appSecret", None)
+        except Exception:
+            client_id = oauth_data.get("client_id")
+            client_secret = oauth_data.get("client_secret")
+            logging.debug("Using client credentials from state")
+
+        api_config = self.config.get_api_config()
+        api_config.oauth_access_token = oauth_data.get("access_token", "")
+        api_config.oauth_refresh_token = oauth_data.get("refresh_token", "")
+        api_config.oauth_client_id = client_id or ""
+        api_config.oauth_client_secret = client_secret or ""
+
+        self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
+
+    def _init_client_from_config(self) -> None:
+        """Initialize client using OAuth credentials from configuration or username/password."""
+        # Check if OAuth credentials are available
+        oauth_creds = None
+        try:
+            oauth_creds = self.configuration.oauth_credentials
+            if oauth_creds and oauth_creds.data:
+                logging.info("OAuth credentials detected, using OAuth authentication")
+
+                # Get client credentials with # prefix for encrypted fields
+                client_id = getattr(oauth_creds, "#appKey", None) or getattr(oauth_creds, "appKey", None)
+                client_secret = getattr(oauth_creds, "#appSecret", None) or getattr(oauth_creds, "appSecret", None)
+
+                api_config = self.config.get_oauth_api_config(oauth_creds)
+                # Override with proper client credentials
+                api_config.oauth_client_id = client_id or api_config.oauth_client_id
+                api_config.oauth_client_secret = client_secret or api_config.oauth_client_secret
+
+                self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
+                return
+        except (AttributeError, KeyError):
+            logging.debug("No OAuth credentials found")
+
+        # Fallback to username/password
+        logging.info("Using username/password authentication")
+        self.client = AcumaticaClient(self.config.get_api_config(), on_token_refresh=self.save_oauth_token_to_state)
+
+    def save_oauth_token_to_state(self) -> None:
+        """Save the current OAuth token to state (without refreshing)."""
+        logging.debug("Saving OAuth token to state")
+
+        # Log the refresh token we're about to save
+        logging.info(f"Saving refresh_token (first 20 chars): {self.client.config.oauth_refresh_token[:20]}...")
+
+        # Save current tokens to state
+        oauth_token_dict = {
+            "access_token": str(self.client.config.oauth_access_token),
+            "refresh_token": str(self.client.config.oauth_refresh_token),
+            "client_id": str(self.client.config.oauth_client_id),
+            "client_secret": str(self.client.config.oauth_client_secret),
+            "token_type": "Bearer",
+        }
+
+        # Update in-memory state
+        if self._state is None:
+            self._state = {}
+        self._state[KEY_STATE_OAUTH_TOKEN_DICT] = json.dumps(oauth_token_dict)
+
+        # Write to disk
+        logging.info(f"WRITING state file with {len(self._state)} keys")
+        self.write_state_file(self._state)
+        logging.info("OAuth token saved to state")
+
+    def refresh_token_and_save_state(self) -> None:
+        """Refresh the OAuth token and save it to state."""
+        logging.info("Refreshing OAuth token and saving to state")
+
+        # Refresh the token
+        self.client._refresh_oauth_token()
+
+        # Save updated tokens to state
+        self.save_oauth_token_to_state()
+        logging.info("Token refreshed and saved to state")
 
     def run(self) -> None:
         """Main execution - orchestrates the component workflow."""
         try:
-            state = self._load_previous_state()
+            self._state = self._load_previous_state()
 
             logging.info("Starting Acumatica data extraction")
 
             self.client.authenticate()
 
+            # Save OAuth token to state if using OAuth (don't refresh, just save)
+            if self.client.config.oauth_access_token and self.client.config.oauth_refresh_token:
+                self.save_oauth_token_to_state()
+
             try:
                 self._extract_endpoint(self.config.get_endpoint_config(), self.config.get_effective_page_size())
-                self._update_state(state)
+                self._update_state()
                 logging.info("Acumatica data extraction completed successfully")
             finally:
                 # Always logout to free up API user slot
@@ -202,17 +326,25 @@ class Component(ComponentBase):
 
         return dict(items)
 
-    def _update_state(self, state: dict[str, Any]) -> None:
+    def _update_state(self) -> None:
         """
         Update state file with new information.
-
-        Args:
-            state: State dictionary to persist.
         """
         from datetime import datetime
 
-        state["last_run_timestamp"] = datetime.now().isoformat()
-        self.write_state_file(state)
+        # Update in-memory state with timestamp
+        if self._state is None:
+            self._state = {}
+        self._state["last_run_timestamp"] = datetime.now().isoformat()
+
+        # Debug: log what we're writing
+        if KEY_STATE_OAUTH_TOKEN_DICT in self._state:
+            oauth_data = json.loads(self._state[KEY_STATE_OAUTH_TOKEN_DICT])
+            logging.info(f"_update_state writing refresh_token (first 20 chars): {oauth_data['refresh_token'][:20]}...")
+
+        # Write to disk
+        logging.info(f"WRITING state file with {len(self._state)} keys in _update_state")
+        self.write_state_file(self._state)
         logging.debug("State file updated")
 
     @sync_action("listTenantVersions")

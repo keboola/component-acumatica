@@ -16,8 +16,12 @@ class AcumaticaApiConfig:
     """Configuration for Acumatica API connection."""
 
     acumatica_url: str
-    acumatica_username: str
-    acumatica_password: str
+    acumatica_username: str = ""
+    acumatica_password: str = ""
+    oauth_access_token: str = ""
+    oauth_refresh_token: str = ""
+    oauth_client_id: str = ""
+    oauth_client_secret: str = ""
 
 
 @dataclass
@@ -48,8 +52,8 @@ class Configuration(BaseModel):
 
     # Global configuration settings
     acumatica_url: str  # Full URL including instance path (e.g., https://your-instance.acumatica.com/AcumaticaERP1)
-    acumatica_username: str = Field(alias="#acumatica_username")
-    acumatica_password: str = Field(alias="#acumatica_password")
+    acumatica_username: str = ""
+    acumatica_password: str = Field(default="", alias="#acumatica_password")
 
     page_size: int = 2500
     debug: bool = False
@@ -87,11 +91,33 @@ class Configuration(BaseModel):
         return url.rstrip("/")
 
     def get_api_config(self) -> AcumaticaApiConfig:
-        """Extract API-specific configuration."""
+        """Extract API-specific configuration for username/password auth."""
         return AcumaticaApiConfig(
             acumatica_url=self.acumatica_url,
             acumatica_username=self.acumatica_username,
             acumatica_password=self.acumatica_password,
+            oauth_access_token="",
+            oauth_refresh_token="",
+            oauth_client_id="",
+            oauth_client_secret="",
+        )
+
+    def get_oauth_api_config(self, oauth_credentials) -> AcumaticaApiConfig:
+        """Extract API-specific configuration with OAuth credentials.
+
+        Args:
+            oauth_credentials: OauthCredentials object from keboola.component.dao
+                              Contains .data dict with OAuth token response
+        """
+        oauth_data = oauth_credentials.data if oauth_credentials else {}
+        return AcumaticaApiConfig(
+            acumatica_url=self.acumatica_url,
+            acumatica_username="",
+            acumatica_password="",
+            oauth_access_token=oauth_data.get("access_token", ""),
+            oauth_refresh_token=oauth_data.get("refresh_token", ""),
+            oauth_client_id=oauth_data.get("client_id", ""),
+            oauth_client_secret=oauth_data.get("client_secret", ""),
         )
 
     def get_endpoint_config(self) -> EndpointConfig:

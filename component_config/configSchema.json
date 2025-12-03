@@ -2,9 +2,7 @@
   "type": "object",
   "title": "Acumatica Extractor Configuration",
   "required": [
-    "acumatica_url",
-    "#acumatica_username",
-    "#acumatica_password"
+    "acumatica_url"
   ],
   "properties": {
     "acumatica_url": {
@@ -14,27 +12,13 @@
       "format": "uri",
       "propertyOrder": 1
     },
-    "#acumatica_username": {
-      "type": "string",
-      "title": "Username",
-      "description": "Acumatica username for authentication",
-      "format": "password",
-      "propertyOrder": 2
-    },
-    "#acumatica_password": {
-      "type": "string",
-      "title": "Password",
-      "description": "Acumatica password for authentication",
-      "format": "password",
-      "propertyOrder": 3
-    },
     "page_size": {
       "type": "integer",
       "title": "Page Size",
       "description": "Number of records to fetch per API request",
       "default": 2500,
       "minimum": 1,
-      "propertyOrder": 4
+      "propertyOrder": 2
     }
   }
 }

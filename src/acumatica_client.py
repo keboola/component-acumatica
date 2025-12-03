@@ -22,17 +22,19 @@ from configuration import AcumaticaApiConfig
 class AcumaticaClient:
     """Client for interacting with Acumatica REST API."""
 
-    def __init__(self, config: AcumaticaApiConfig):
+    def __init__(self, config: AcumaticaApiConfig, on_token_refresh=None):
         """
         Initialize Acumatica API client.
 
         Args:
             config: API configuration containing URL, credentials, and company.
+            on_token_refresh: Optional callback to invoke after successful token refresh.
         """
         self.config = config
         self.base_url = config.acumatica_url
         self.session = self._create_session()
         self._authenticated = False
+        self.on_token_refresh = on_token_refresh
 
     def _create_session(self) -> requests.Session:
         """
@@ -60,10 +62,160 @@ class AcumaticaClient:
         """
         Authenticate with Acumatica API.
 
-        Performs login and stores session cookies for subsequent requests.
+        Uses OAuth 2.0 Bearer token if available, otherwise falls back to username/password authentication.
+        Stores session cookies for subsequent requests.
 
         Raises:
             requests.exceptions.RequestException: If authentication fails.
+        """
+        # Try OAuth first if access token is available
+        if self.config.oauth_access_token:
+            logging.info(f"Authenticating with OAuth 2.0 at {self.base_url}")
+            try:
+                self._authenticate_oauth()
+                return
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"OAuth authentication failed: {e}. Falling back to username/password.")
+
+        # Fallback to username/password authentication
+        if self.config.acumatica_username and self.config.acumatica_password:
+            logging.info(f"Authenticating with username/password at {self.base_url}")
+            self._authenticate_username_password()
+        else:
+            raise ValueError(
+                "No valid authentication method available. "
+                "Please provide either OAuth credentials or username/password."
+            )
+
+    def _authenticate_oauth(self) -> None:
+        """
+        Authenticate using OAuth 2.0 Bearer token.
+
+        Sets the Authorization header for subsequent requests.
+
+        Note: Token refresh is handled automatically by Keboola's OAuth Broker in production.
+        For local testing, tokens expire after 1 hour and must be manually refreshed.
+        """
+        # Set the Bearer token in session headers
+        self.session.headers.update(
+            {
+                "Authorization": f"Bearer {self.config.oauth_access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+        )
+
+        # Test the OAuth token by making a simple request
+        test_url = f"{self.base_url}/entity/"
+        try:
+            response = self.session.get(test_url, timeout=30)
+            response.raise_for_status()
+            self._authenticated = True
+            logging.info("Successfully authenticated with OAuth 2.0")
+            logging.debug(f"Session headers: {dict(self.session.headers)}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401 and self.config.oauth_refresh_token:
+                logging.warning("Access token expired, attempting to refresh...")
+                try:
+                    self._refresh_oauth_token()
+                    # Update session header with new token and retry
+                    self.session.headers.update({"Authorization": f"Bearer {self.config.oauth_access_token}"})
+                    response = self.session.get(test_url, timeout=30)
+                    response.raise_for_status()
+                    self._authenticated = True
+                    logging.info("Successfully authenticated with refreshed OAuth token")
+                    return
+                except Exception as refresh_error:
+                    logging.error(f"Token refresh failed: {refresh_error}")
+                    raise ValueError(
+                        "OAuth token is invalid or expired and refresh failed. "
+                        "Please get a new token using: ./scripts/oauth_helper.sh"
+                    )
+            elif e.response.status_code == 401:
+                raise ValueError(
+                    "OAuth token is invalid or expired. "
+                    "In production, Keboola automatically refreshes tokens. "
+                    "For local testing, please get a new token using the oauth_helper.sh script."
+                )
+            raise
+
+    def _refresh_oauth_token(self) -> None:
+        """
+        Refresh the OAuth access token using the refresh token.
+
+        Note: In Keboola production, token refresh is handled automatically
+        by the OAuth Broker. This method is for local development/testing.
+        """
+        if not self.config.oauth_refresh_token:
+            raise ValueError("No refresh token available")
+
+        if not self.config.oauth_client_id or not self.config.oauth_client_secret:
+            logging.warning(
+                "Client ID and Secret not available for token refresh. "
+                "Please get a new token using: ./scripts/oauth_helper.sh"
+            )
+            raise ValueError("Cannot refresh token without client credentials")
+
+        token_url = f"{self.base_url}/identity/connect/token"
+
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": self.config.oauth_refresh_token,
+            "client_id": self.config.oauth_client_id,
+            "client_secret": self.config.oauth_client_secret,
+        }
+
+        try:
+            logging.debug(f"Refreshing token at: {token_url}")
+            logging.debug(f"With client_id: {self.config.oauth_client_id}")
+            logging.debug(f"Refresh token (first 20 chars): {self.config.oauth_refresh_token[:20]}...")
+
+            response = requests.post(token_url, data=data, timeout=30)
+
+            if response.status_code != 200:
+                logging.error(f"Token refresh failed with status {response.status_code}")
+                logging.error(f"Response: {response.text}")
+
+            response.raise_for_status()
+            token_data = response.json()
+
+            # Update the access token in config
+            self.config.oauth_access_token = token_data.get("access_token", "")
+            if "refresh_token" in token_data:
+                old_refresh = self.config.oauth_refresh_token[:20]
+                self.config.oauth_refresh_token = token_data["refresh_token"]
+                new_refresh = self.config.oauth_refresh_token[:20]
+                logging.info(
+                    f"Token refresh: OLD refresh_token: {old_refresh}... -> NEW refresh_token: {new_refresh}..."
+                )
+
+            logging.info("Successfully refreshed OAuth token")
+
+            # Call callback to save new tokens to state
+            if self.on_token_refresh:
+                logging.info("Calling on_token_refresh callback to save new tokens")
+                self.on_token_refresh()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Token refresh failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logging.error(f"Response body: {e.response.text}")
+                try:
+                    error_data = e.response.json()
+                    if error_data.get("error") == "invalid_grant":
+                        raise ValueError(
+                            "Refresh token is invalid or expired. "
+                            "Both access_token and refresh_token need to be regenerated. "
+                            "Please get new tokens using: ./scripts/oauth_helper.sh"
+                        )
+                except Exception:
+                    pass
+            raise ValueError("Failed to refresh OAuth token. Please get a new token using: ./scripts/oauth_helper.sh")
+
+    def _authenticate_username_password(self) -> None:
+        """
+        Authenticate using username and password.
+
+        Performs login and stores session cookies for subsequent requests.
         """
         login_url = f"{self.base_url}/entity/auth/login"
 
@@ -72,15 +224,13 @@ class AcumaticaClient:
             "password": self.config.acumatica_password,
         }
 
-        logging.info(f"Authenticating with Acumatica at {self.base_url}")
-
         try:
             response = self.session.post(login_url, json=login_data, timeout=30)
             response.raise_for_status()
             self._authenticated = True
-            logging.info("Successfully authenticated with Acumatica")
+            logging.info("Successfully authenticated with username/password")
         except requests.exceptions.RequestException as e:
-            logging.error(f"Authentication failed: {e}")
+            logging.error(f"Username/password authentication failed: {e}")
             raise
 
     def logout(self) -> None:
@@ -155,7 +305,23 @@ class AcumaticaClient:
                 params["$select"] = select
 
             try:
+                logging.debug(f"Request URL: {endpoint_url}")
+                logging.debug(f"Request params: {params}")
+                logging.debug(f"Request headers: {dict(self.session.headers)}")
+
                 response = self.session.get(endpoint_url, params=params, timeout=60)
+
+                # Attempt token refresh on 401 for OAuth
+                if response.status_code == 401 and self.config.oauth_access_token and self.config.oauth_refresh_token:
+                    logging.warning("Received 401, attempting to refresh OAuth token...")
+                    try:
+                        self._refresh_oauth_token()
+                        # Update session header with new token and retry
+                        self.session.headers.update({"Authorization": f"Bearer {self.config.oauth_access_token}"})
+                        response = self.session.get(endpoint_url, params=params, timeout=60)
+                    except Exception as refresh_error:
+                        logging.error(f"Token refresh failed: {refresh_error}")
+
                 response.raise_for_status()
 
                 data = response.json()
