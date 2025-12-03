@@ -111,17 +111,26 @@
           }
         },
         "primary_keys": {
-          "type": "string",
+          "type": "array",
           "format": "select",
           "title": "Primary Keys",
-          "description": "Select primary key columns for incremental loads. Run the component once with full load, then use the 'Get Output Columns' sync action to see available columns. Required for incremental loads.",
+          "description": "Select primary key columns for incremental loads. Use the 'Get Columns' button to load available columns from the endpoint schema.",
           "propertyOrder": 3,
           "enum": [],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
           "options": {
             "async": {
-              "action": "get_output_columns",
-              "label": "GET COLUMNS"
+              "action": "getOutputColumns",
+              "label": "Get Columns",
+              "watchFor": [
+                "tenant_version",
+                "endpoint"
+              ]
             },
+            "tags": true,
             "creatable": true,
             "dependencies": {
               "load_type": "incremental_load"

@@ -243,6 +243,27 @@ class AcumaticaClient:
         logging.info(f"Found {len(result)} tenant/version combinations")
         return result
 
+    def get_swagger_data(self, tenant_version: str) -> dict[str, Any]:
+        """
+        Fetch swagger.json data for a specific tenant/version.
+
+        Args:
+            tenant_version: Tenant/version string (e.g., 'Default/25.200.001').
+
+        Returns:
+            Parsed swagger JSON data.
+
+        Raises:
+            requests.exceptions.RequestException: If request fails.
+        """
+        swagger_url = f"{self.base_url}/entity/{tenant_version}/swagger.json"
+
+        logging.info(f"Fetching swagger from {swagger_url}")
+
+        response = requests.get(swagger_url, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
     def get_endpoints(self, tenant_version: str) -> list[dict[str, str]]:
         """
         Fetch available endpoints from Acumatica swagger.json for selected tenant/version.
@@ -256,13 +277,7 @@ class AcumaticaClient:
         Raises:
             requests.exceptions.RequestException: If request fails.
         """
-        swagger_url = f"{self.base_url}/entity/{tenant_version}/swagger.json"
-
-        logging.info(f"Fetching swagger from {swagger_url}")
-
-        response = requests.get(swagger_url, timeout=30)
-        response.raise_for_status()
-        swagger_data = response.json()
+        swagger_data = self.get_swagger_data(tenant_version)
 
         entity_names = set()
 

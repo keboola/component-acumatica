@@ -16,6 +16,7 @@ from keboola.component.exceptions import UserException
 
 from acumatica_client import AcumaticaClient
 from configuration import Configuration, EndpointConfig
+from swagger_parser import SwaggerParser
 
 
 class Component(ComponentBase):
@@ -40,10 +41,7 @@ class Component(ComponentBase):
             self.client.authenticate()
 
             try:
-                self._extract_endpoint(
-                    self.config.get_endpoint_config(),
-                    self.config.get_effective_page_size(),
-                )
+                self._extract_endpoint(self.config.get_endpoint_config(), self.config.get_effective_page_size())
                 self._update_state(state)
                 logging.info("Acumatica data extraction completed successfully")
             finally:
@@ -238,6 +236,42 @@ class Component(ComponentBase):
             raise UserException("Tenant/Version must be selected first to list endpoints")
 
         return self.client.get_endpoints(tenant_version)
+
+    @sync_action("getOutputColumns")
+    def get_output_columns(self):
+        """
+        Fetch available columns/fields from the swagger schema for the selected endpoint.
+
+        Returns list of field names that can be used as primary keys.
+        """
+        tenant_version = self.configuration.parameters.get("tenant_version")
+        endpoint = self.configuration.parameters.get("endpoint")
+
+        if not tenant_version:
+            raise UserException("Tenant/Version must be selected first")
+        if not endpoint:
+            raise UserException("Endpoint must be selected first")
+
+        # Fetch swagger data
+        swagger_data = self.client.get_swagger_data(tenant_version)
+
+        # Parse swagger to get entity fields
+        parser = SwaggerParser(swagger_data)
+        columns = parser.get_entity_primary_key_candidates(endpoint)
+
+        if not columns:
+            raise UserException(f"No columns found in the schema for endpoint '{endpoint}'.")
+
+        # Return in the format expected by the UI
+        result = []
+        for col in columns:
+            result.append(
+                {
+                    "label": col.name + (" (required)" if col.required else ""),
+                    "value": col.name,
+                }
+            )
+        return result
 
 
 """
