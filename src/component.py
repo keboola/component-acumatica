@@ -7,11 +7,13 @@ Extracts data from Acumatica ERP system via REST API and saves to Keboola tables
 import csv
 import json
 import logging
+import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import requests
 from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
@@ -33,12 +35,58 @@ class Component(ComponentBase):
         super().__init__()
         self.config = Configuration(**self.configuration.parameters)
         self._state = None  # Cache state in memory
+        self._storage_api_token = os.getenv("KBC_TOKEN")
+        self._storage_api_url = os.getenv("KBC_URL", "https://connection.keboola.com")
+        self._config_id = os.getenv("KBC_CONFIGID")
         self._init_client()
+
+    def _get_config_state_from_api(self) -> dict:
+        """Get configuration-level state from Storage API (shared across all rows)."""
+        if not self._storage_api_token or not self._config_id:
+            logging.debug("No Storage API token or config ID, using local state file")
+            return self.get_state_file()
+
+        try:
+            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            headers = {"X-StorageApi-Token": self._storage_api_token}
+            response = requests.get(url, headers=headers, timeout=30)
+
+            if response.status_code == 404:
+                logging.debug("Configuration state not found, returning empty state")
+                return {}
+
+            response.raise_for_status()
+            state_data = response.json()
+            # Storage API returns state nested under 'state' key
+            return state_data.get("state", {})
+        except Exception as e:
+            logging.warning(f"Failed to get configuration state from API: {e}. Using local state file.")
+            return self.get_state_file()
+
+    def _set_config_state_to_api(self, state: dict) -> None:
+        """Set configuration-level state to Storage API (shared across all rows)."""
+        if not self._storage_api_token or not self._config_id:
+            logging.debug("No Storage API token or config ID, using local state file")
+            self.write_state_file(state)
+            return
+
+        try:
+            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            headers = {"X-StorageApi-Token": self._storage_api_token, "Content-Type": "application/json"}
+            # Storage API expects state nested under 'state' key
+            payload = {"state": state}
+            response = requests.put(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            logging.debug("Configuration state saved to Storage API")
+        except Exception as e:
+            logging.warning(f"Failed to save configuration state to API: {e}. Using local state file.")
+            self.write_state_file(state)
 
     def _init_client(self) -> None:
         """Initialize Acumatica client from state or OAuth credentials."""
         logging.debug("Initializing Acumatica client")
-        state = self.get_state_file()
+        # Get configuration-level state (shared across all rows)
+        state = self._get_config_state_from_api()
         state_oauth_token = state.get(KEY_STATE_OAUTH_TOKEN_DICT)
 
         if self._state_contains_oauth_token(state_oauth_token):
@@ -135,10 +183,10 @@ class Component(ComponentBase):
             self._state = {}
         self._state[KEY_STATE_OAUTH_TOKEN_DICT] = json.dumps(oauth_token_dict)
 
-        # Write to disk
-        logging.info(f"WRITING state file with {len(self._state)} keys")
-        self.write_state_file(self._state)
-        logging.info("OAuth token saved to state")
+        # Write to configuration-level state (shared across all rows)
+        logging.info(f"WRITING configuration state with {len(self._state)} keys")
+        self._set_config_state_to_api(self._state)
+        logging.info("OAuth token saved to configuration state")
 
     def refresh_token_and_save_state(self) -> None:
         """Refresh the OAuth token and save it to state."""
@@ -154,7 +202,9 @@ class Component(ComponentBase):
     def run(self) -> None:
         """Main execution - orchestrates the component workflow."""
         try:
-            self._state = self._load_previous_state()
+            # Load configuration-level state (shared across all rows)
+            self._state = self._get_config_state_from_api()
+            logging.info(f"Loaded configuration state: {list(self._state.keys())}")
 
             logging.info("Starting Acumatica data extraction")
 
@@ -187,17 +237,6 @@ class Component(ComponentBase):
 
             logging.exception("Unhandled error during extraction")
             raise UserException(f"Extraction failed: {error_msg}")
-
-    def _load_previous_state(self) -> dict[str, Any]:
-        """
-        Load state from previous run.
-
-        Returns:
-            State dictionary from previous run.
-        """
-        state = self.get_state_file()
-        logging.info(f"Loaded previous state: {state}")
-        return state
 
     def _extract_endpoint(
         self,
@@ -342,10 +381,10 @@ class Component(ComponentBase):
             oauth_data = json.loads(self._state[KEY_STATE_OAUTH_TOKEN_DICT])
             logging.info(f"_update_state writing refresh_token (first 20 chars): {oauth_data['refresh_token'][:20]}...")
 
-        # Write to disk
-        logging.info(f"WRITING state file with {len(self._state)} keys in _update_state")
-        self.write_state_file(self._state)
-        logging.debug("State file updated")
+        # Write to configuration-level state (shared across all rows)
+        logging.info(f"WRITING configuration state with {len(self._state)} keys in _update_state")
+        self._set_config_state_to_api(self._state)
+        logging.debug("Configuration state updated")
 
     @sync_action("listTenantVersions")
     def list_tenant_versions(self):
