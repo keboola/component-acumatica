@@ -7,10 +7,8 @@ Extracts data from Acumatica ERP system via REST API and saves to Keboola tables
 import csv
 import json
 import logging
-import os
 import sys
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -18,7 +16,7 @@ from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
 from acumatica_client import AcumaticaClient
-from configuration import Configuration, EndpointConfig
+from configuration import Configuration
 from swagger_parser import SwaggerParser
 
 KEY_STATE_OAUTH_TOKEN_DICT = "#oauth_token_dict"
@@ -35,9 +33,10 @@ class Component(ComponentBase):
         super().__init__()
         self.config = Configuration(**self.configuration.parameters)
         self._state = None  # Cache state in memory
-        self._storage_api_token = os.getenv("KBC_TOKEN")
-        self._storage_api_url = os.getenv("KBC_URL", "https://connection.keboola.com")
-        self._config_id = os.getenv("KBC_CONFIGID")
+        env = self.environment_variables
+        self._storage_api_token = env.token
+        self._storage_api_url = env.url or "https://connection.keboola.com"
+        self._config_id = env.config_id
         self._init_client()
 
     def _get_config_state_from_api(self) -> dict:
@@ -215,7 +214,7 @@ class Component(ComponentBase):
                 self.save_oauth_token_to_state()
 
             try:
-                self._extract_endpoint(self.config.get_endpoint_config(), self.config.get_effective_page_size())
+                self._extract_endpoint()
                 self._update_state()
                 logging.info("Acumatica data extraction completed successfully")
             finally:
@@ -238,33 +237,24 @@ class Component(ComponentBase):
             logging.exception("Unhandled error during extraction")
             raise UserException(f"Extraction failed: {error_msg}")
 
-    def _extract_endpoint(
-        self,
-        endpoint_config: EndpointConfig,
-        page_size: int,
-    ) -> None:
-        """
-        Extract data from a single Acumatica endpoint.
-
-        Args:
-            endpoint_config: Configuration for the endpoint to extract.
-            page_size: Number of records to fetch per API request.
-        """
-        logging.info(f"Extracting endpoint: {endpoint_config.endpoint}")
+    def _extract_endpoint(self) -> None:
+        """Extract data from the configured Acumatica endpoint."""
+        logging.info(f"Extracting endpoint: {self.config.endpoint}")
 
         entities = self.client.get_entities(
-            tenant_version=endpoint_config.tenant_version,
-            endpoint=endpoint_config.endpoint,
-            expand=endpoint_config.expand,
-            filter_expr=endpoint_config.filter_expr,
-            select=endpoint_config.select,
-            top=page_size,
+            tenant_version=self.config.tenant_version,
+            endpoint=self.config.endpoint,
+            expand=self.config.expand,
+            filter_expr=self.config.filter_expr,
+            select=self.config.select,
+            top=self.config.get_effective_page_size(),
         )
 
-        incremental = endpoint_config.load_type == "incremental_load"
-        records_written = self._write_entities_to_table(entities, endpoint_config.output_table_name, incremental)
+        output_table_name = self.config.get_output_table_name()
+        incremental = self.config.is_incremental()
+        records_written = self._write_entities_to_table(entities, output_table_name, incremental)
 
-        logging.info(f"Extracted {records_written} records from {endpoint_config.endpoint}")
+        logging.info(f"Extracted {records_written} records from {self.config.endpoint}")
 
     def _write_entities_to_table(self, entities: Iterator[dict[str, Any]], table_name: str, incremental: bool) -> int:
         """
@@ -280,8 +270,6 @@ class Component(ComponentBase):
         Returns:
             Number of records written.
         """
-        output_table_path = self._get_output_table_path(table_name)
-
         # Collect all records and determine all columns
         flattened_records = []
         all_columns: set[str] = set()
@@ -295,42 +283,21 @@ class Component(ComponentBase):
         csv_columns = sorted(all_columns)  # Sort for consistent column order
 
         if records_written > 0:
-            with open(output_table_path, mode="w", encoding="utf-8", newline="") as out_file:
+            # Create table definition to get the proper output path
+            table = self.create_out_table_definition(name=f"{table_name}.csv", incremental=incremental, primary_key=[])
+
+            # Write data to the table using full_path from table definition
+            with open(table.full_path, mode="w", encoding="utf-8", newline="") as out_file:
                 writer = csv.DictWriter(out_file, fieldnames=csv_columns)
                 writer.writeheader()
-
                 for record in flattened_records:
                     writer.writerow(record)
 
-            self._create_table_manifest(table_name, csv_columns, incremental)
+            # Write manifest after all data is written
+            self.write_manifest(table)
+            logging.debug(f"Created manifest for table: {table_name}")
 
         return records_written
-
-    def _get_output_table_path(self, table_name: str) -> Path:
-        """
-        Get the full path for output table file.
-
-        Args:
-            table_name: Name of the output table.
-
-        Returns:
-            Path to the output CSV file.
-        """
-        tables_out_path = Path(self.tables_out_path)
-        return tables_out_path / f"{table_name}.csv"
-
-    def _create_table_manifest(self, table_name: str, columns: list[str], incremental: bool) -> None:
-        """
-        Create table manifest for output table.
-
-        Args:
-            table_name: Name of the output table.
-            columns: List of column names.
-            incremental: Whether to use incremental mode.
-        """
-        table = self.create_out_table_definition(name=f"{table_name}.csv", incremental=incremental, primary_key=[])
-        self.write_manifest(table)
-        logging.debug(f"Created manifest for table: {table_name}")
 
     @staticmethod
     def _flatten_entity(entity: dict[str, Any], parent_key: str = "", sep: str = "_") -> dict[str, Any]:

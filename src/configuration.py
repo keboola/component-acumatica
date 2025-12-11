@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 @dataclass
 class AcumaticaApiConfig:
-    """Configuration for Acumatica API connection."""
+    """Configuration for Acumatica API connection (internal use only)."""
 
     acumatica_url: str
     acumatica_username: str = ""
@@ -24,27 +24,12 @@ class AcumaticaApiConfig:
     oauth_client_secret: str = ""
 
 
-@dataclass
-class Destination:
+class Destination(BaseModel):
     """Configuration for destination settings."""
 
-    output_table_name: str
+    output_table_name: str = ""
     load_type: str = "full_load"
     primary_keys: str = ""
-
-
-@dataclass
-class EndpointConfig:
-    """Configuration for a single Acumatica endpoint to extract."""
-
-    tenant_version: str  # Format: "tenant/version" (e.g., "Default/25.200.001")
-    endpoint: str
-    expand: str
-    filter_expr: str
-    select: str
-    output_table_name: str
-    load_type: str
-    primary_keys: str
 
 
 class Configuration(BaseModel):
@@ -69,7 +54,7 @@ class Configuration(BaseModel):
     override_global_page_size: bool = False
     row_page_size: int = 2500
 
-    destination: dict = {}
+    destination: Destination = Field(default_factory=Destination)
 
     def __init__(self, **data):
         try:
@@ -120,23 +105,17 @@ class Configuration(BaseModel):
             oauth_client_secret=oauth_data.get("client_secret", ""),
         )
 
-    def get_endpoint_config(self) -> EndpointConfig:
-        """Extract endpoint-specific configuration."""
-        dest = self.destination if self.destination else {}
-        output_table_name = dest.get("output_table_name", "") or self.endpoint
-        load_type = dest.get("load_type", "full_load")
-        primary_keys = dest.get("primary_keys", "")
+    def get_output_table_name(self) -> str:
+        """Get the output table name, defaulting to endpoint name if not specified."""
+        return self.destination.output_table_name or self.endpoint
 
-        return EndpointConfig(
-            tenant_version=self.tenant_version,
-            endpoint=self.endpoint,
-            expand=self.expand,
-            filter_expr=self.filter_expr,
-            select=self.select,
-            output_table_name=output_table_name,
-            load_type=load_type,
-            primary_keys=primary_keys,
-        )
+    def get_load_type(self) -> str:
+        """Get the load type from destination settings."""
+        return self.destination.load_type
+
+    def is_incremental(self) -> bool:
+        """Check if the load type is incremental."""
+        return self.destination.load_type == "incremental_load"
 
     def get_effective_page_size(self) -> int:
         """

@@ -258,7 +258,7 @@ class AcumaticaClient:
         expand: str = "",
         filter_expr: str = "",
         select: str = "",
-        top: int = 2500,
+        top: int = 0,
     ) -> Iterator[dict[str, Any]]:
         """
         Retrieve entities from Acumatica endpoint with pagination.
@@ -272,7 +272,7 @@ class AcumaticaClient:
             expand: Related entities to expand (e.g., 'MainContact').
             filter_expr: OData filter expression.
             select: OData select expression for specific fields.
-            top: Number of records per page (default: 100).
+            top: Number of records per page (configured via page_size in component config).
 
         Yields:
             Entity dictionaries from the API.
