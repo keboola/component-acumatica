@@ -7,6 +7,7 @@ Defines the structure of configuration parameters using Pydantic models.
 import logging
 from dataclasses import dataclass
 
+from keboola.component.dao import OauthCredentials
 from keboola.component.exceptions import UserException
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -90,7 +91,7 @@ class Configuration(BaseModel):
             oauth_client_secret="",
         )
 
-    def get_oauth_api_config(self, oauth_credentials) -> AcumaticaApiConfig:
+    def get_oauth_api_config(self, oauth_credentials: OauthCredentials) -> AcumaticaApiConfig:
         """Extract API-specific configuration with OAuth credentials.
 
         Args:

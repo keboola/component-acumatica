@@ -29,17 +29,19 @@ class Component(ComponentBase):
     Extracts data from configured Acumatica endpoint and writes result to output table.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.config = Configuration(**self.configuration.parameters)
-        self._state = None
+        self._state: dict[str, Any] | None = None
+
         env = self.environment_variables
-        self._storage_api_token = env.token
-        self._storage_api_url = env.url or "https://connection.keboola.com"
-        self._config_id = env.config_id
-        self._component_id = env.component_id
-        self._project_id = env.project_id
-        self._init_client()
+        self._storage_api_token: str = env.token
+        self._storage_api_url: str = env.url or "https://connection.keboola.com"
+        self._config_id: str = env.config_id
+        self._component_id: str = env.component_id
+        self._project_id: str = env.project_id
+
+        self.config = Configuration(**self.configuration.parameters)
+        self.client: AcumaticaClient = self._init_client()
 
     def _get_config_state_from_api(self) -> dict:
         """Get configuration-level state from Storage API (shared across all rows)."""
@@ -94,19 +96,45 @@ class Component(ComponentBase):
         response.raise_for_status()
         return response.text
 
-    def _init_client(self) -> None:
+    def _init_client(self) -> AcumaticaClient:
         """Initialize Acumatica client from state or OAuth credentials."""
         logging.debug("Initializing Acumatica client")
         # Get configuration-level state (shared across all rows)
         state = self._get_config_state_from_api()
         state_oauth_token = state.get(KEY_STATE_OAUTH_TOKEN_DICT)
 
+        # Debug OAuth Broker credentials
+        oauth_creds = self.configuration.oauth_credentials
+        if oauth_creds:
+            creds_debug = {}
+            for attr in dir(oauth_creds):
+                if attr.startswith("_"):
+                    continue
+
+                try:
+                    val = getattr(oauth_creds, attr)
+                    if callable(val):
+                        continue
+
+                    if isinstance(val, dict):
+                        dict_debug = {}
+                        for k, v in val.items():
+                            v_str = str(v)
+                            dict_debug[k] = v_str[:8] + "..." if len(v_str) > 8 else v_str
+                        creds_debug[attr] = dict_debug
+                    else:
+                        val_str = str(val)
+                        creds_debug[attr] = val_str[:8] + "..." if len(val_str) > 8 else val_str
+                except Exception:
+                    pass
+            logging.info(f"OAuth Broker credentials fields: {creds_debug}")
+
         if self._state_contains_oauth_token(state_oauth_token):
             logging.debug("Initializing client from state")
-            self._init_client_from_state(state_oauth_token)
+            return self._init_client_from_state(state_oauth_token)
         else:
             logging.debug("Initializing client from OAuth credentials or username/password")
-            self._init_client_from_config()
+            return self._init_client_from_configuration()
 
     def _state_contains_oauth_token(self, state_oauth_token: Any) -> bool:
         """Check if state contains valid OAuth token."""
@@ -125,7 +153,7 @@ class Component(ComponentBase):
         else:
             return {}
 
-    def _init_client_from_state(self, state_oauth_token: Any) -> None:
+    def _init_client_from_state(self, state_oauth_token: Any) -> AcumaticaClient:
         """Initialize client using OAuth credentials from state."""
         oauth_data = self._load_state_oauth(state_oauth_token)
 
@@ -143,19 +171,33 @@ class Component(ComponentBase):
         api_config.oauth_client_id = oauth_data.get("client_id", "")
         api_config.oauth_client_secret = oauth_data.get("client_secret", "")
 
-        self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
+        return AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
 
-    def _init_client_from_config(self) -> None:
-        """Initialize client using OAuth credentials from configuration or username/password."""
+    def _init_client_from_configuration(self) -> AcumaticaClient:
+        """Initialize client using OAuth credentials from configuration."""
         try:
             oauth_creds = self.configuration.oauth_credentials
-            if oauth_creds and oauth_creds.data:
+            if oauth_creds:
                 logging.info("OAuth credentials detected, using OAuth authentication")
 
                 api_config = self.config.get_oauth_api_config(oauth_creds)
 
+                logging.info(
+                    f"client_id from get_oauth_api_config: {
+                        api_config.oauth_client_id[:8] if api_config.oauth_client_id else 'None'
+                    }..., "
+                    f"client_secret from get_oauth_api_config: {
+                        api_config.oauth_client_secret[:8] if api_config.oauth_client_secret else 'None'
+                    }..."
+                )
+
                 client_id = getattr(oauth_creds, "appKey", None)
-                client_secret = getattr(oauth_creds, "#appSecret", None)
+                client_secret = getattr(oauth_creds, "appSecret", None)
+
+                logging.info(
+                    f"appKey from oauth_creds: {client_id[:8] if client_id else 'None'}..., "
+                    f"appSecret from oauth_creds: {client_secret[:8] if client_secret else 'None'}..."
+                )
 
                 if client_id:
                     api_config.oauth_client_id = client_id
@@ -163,17 +205,23 @@ class Component(ComponentBase):
                     api_config.oauth_client_secret = client_secret
 
                 logging.info(
+                    f"Final client_id: {api_config.oauth_client_id[:8] if api_config.oauth_client_id else 'None'}..., "
+                    f"Final client_secret: {
+                        api_config.oauth_client_secret[:8] if api_config.oauth_client_secret else 'None'
+                    }..."
+                )
+
+                logging.info(
                     f"Loading OAuth tokens from config: access_token={api_config.oauth_access_token[:8]}..., "
                     f"refresh_token={api_config.oauth_refresh_token[:8]}..."
                 )
 
-                self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
-                return
+                return AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
         except (AttributeError, KeyError):
             logging.debug("No OAuth credentials found")
 
         logging.info("Using username/password authentication")
-        self.client = AcumaticaClient(self.config.get_api_config(), on_token_refresh=self.save_oauth_token_to_state)
+        return AcumaticaClient(self.config.get_api_config(), on_token_refresh=self.save_oauth_token_to_state)
 
     def save_oauth_token_to_state(self) -> None:
         """Save the current OAuth token to state."""
