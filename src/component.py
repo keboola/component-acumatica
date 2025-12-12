@@ -360,6 +360,8 @@ class Component(ComponentBase):
 
         if records_written > 0:
             table = self.create_out_table_definition(name=table_name, incremental=incremental, primary_key=[])
+            logging.info(f"Table full_path: {table.full_path}")
+            logging.info(f"Writing {records_written} records to {table.full_path}")
 
             with open(table.full_path, mode="w", encoding="utf-8", newline="") as out_file:
                 writer = csv.DictWriter(out_file, fieldnames=csv_columns)
@@ -367,9 +369,10 @@ class Component(ComponentBase):
                 for record in flattened_records:
                     writer.writerow(record)
 
+            logging.info("File written, now writing manifest")
             # Write manifest after all data is written
             self.write_manifest(table)
-            logging.debug(f"Created manifest for table: {table_name}")
+            logging.info(f"Manifest written for table: {table_name}")
 
         return records_written
 
