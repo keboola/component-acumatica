@@ -43,6 +43,8 @@ class Component(ComponentBase):
         self.config = Configuration(**self.configuration.parameters)
         self.client: AcumaticaClient = self._init_client()
 
+        logging.info("Config ID: %s", self._config_id)
+
     def _get_config_state_from_api(self) -> dict:
         """Get configuration-level state from Storage API (shared across all rows)."""
         if not self._storage_api_token or not self._config_id:
@@ -50,17 +52,32 @@ class Component(ComponentBase):
             return self.get_state_file()
 
         try:
-            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            # TODO: remove hardcoded component id
+            url = (
+                self._storage_api_url
+                + "/v2/storage/branch/default/components/keboola.ex-acumatica/configs/"
+                + self._config_id
+            )
             headers = {"X-StorageApi-Token": self._storage_api_token}
             response = requests.get(url, headers=headers, timeout=30)
 
             if response.status_code == 404:
-                logging.debug("Configuration state not found, returning empty state")
+                logging.debug("Configuration not found, returning empty state")
                 return {}
 
             response.raise_for_status()
-            state_data = response.json()
-            return state_data.get("state", {})
+            logging.info("Storage API response: %s", response.text)
+            try:
+                config_data = response.json()
+                logging.info(type(config_data))
+                logging.info(type(config_data.get("state")))
+                logging.info(list(config_data["state"].keys()))
+                logging.info(type(config_data["state"]["#oauth_token_dict"]))
+                logging.info(config_data["state"]["#oauth_token_dict"])
+            except Exception as e:
+                logging.error(f"Failed to parse JSON from Storage API response: {e}")
+                return {}
+            return config_data.get("state", {})
         except Exception as e:
             logging.warning(f"Failed to get configuration state from API: {e}. Using local state file.")
             return self.get_state_file()
@@ -73,7 +90,14 @@ class Component(ComponentBase):
             return
 
         try:
-            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            # TODO: remove hardcoded component id
+            url = (
+                self._storage_api_url
+                + "/v2/storage/branch/default/components/keboola.ex-acumatica/configs/"
+                + self._config_id
+                + "/state"
+            )
+
             headers = {"X-StorageApi-Token": self._storage_api_token, "Content-Type": "application/json"}
             payload = {"state": state}
             response = requests.put(url, headers=headers, json=payload, timeout=30)
@@ -89,7 +113,6 @@ class Component(ComponentBase):
         params = {
             "componentId": self._component_id,
             "projectId": self._project_id,
-            "configId": self._config_id,
         }
         headers = {"Content-Type": "text/plain"}
         response = requests.post(url, data=value, params=params, headers=headers, timeout=30)
@@ -120,7 +143,10 @@ class Component(ComponentBase):
                         dict_debug = {}
                         for k, v in val.items():
                             v_str = str(v)
-                            dict_debug[k] = v_str[:8] + "..." if len(v_str) > 8 else v_str
+                            if k == "created":
+                                dict_debug[k] = v_str
+                            else:
+                                dict_debug[k] = v_str[:8] + "..." if len(v_str) > 8 else v_str
                         creds_debug[attr] = dict_debug
                     else:
                         val_str = str(val)
