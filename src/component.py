@@ -29,40 +29,50 @@ class Component(ComponentBase):
     Extracts data from configured Acumatica endpoint and writes result to output table.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.config = Configuration(**self.configuration.parameters)
-        self._state = None  # Cache state in memory
-        env = self.environment_variables
-        self._storage_api_token = env.token
-        self._storage_api_url = env.url or "https://connection.keboola.com"
-        self._config_id = env.config_id
-        self._init_client()
+        self._state: dict[str, Any] | None = None
 
-    def _get_config_state_from_api(self) -> dict:
+        env = self.environment_variables
+        self._storage_api_token: str = env.token
+        self._storage_api_url: str = env.url or "https://connection.keboola.com"
+        self._config_id: str = env.config_id
+        self._component_id: str = env.component_id
+        self._project_id: str = env.project_id
+        self._state = self._load_config_state()
+
+        self.config = Configuration(**self.configuration.parameters)
+        self.client: AcumaticaClient = self._init_client()
+
+    def _load_config_state(self) -> dict:
         """Get configuration-level state from Storage API (shared across all rows)."""
         if not self._storage_api_token or not self._config_id:
             logging.debug("No Storage API token or config ID, using local state file")
             return self.get_state_file()
 
         try:
-            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            url = (
+                self._storage_api_url
+                + "/v2/storage/branch/default/components/"
+                + self._component_id
+                + "/configs/"
+                + self._config_id
+            )
             headers = {"X-StorageApi-Token": self._storage_api_token}
             response = requests.get(url, headers=headers, timeout=30)
 
             if response.status_code == 404:
-                logging.debug("Configuration state not found, returning empty state")
+                logging.debug("Configuration not found, returning empty state")
                 return {}
 
             response.raise_for_status()
-            state_data = response.json()
-            # Storage API returns state nested under 'state' key
-            return state_data.get("state", {})
+            config_data = response.json()
+            return config_data.get("state", {})
         except Exception as e:
-            logging.warning(f"Failed to get configuration state from API: {e}. Using local state file.")
-            return self.get_state_file()
+            logging.warning(f"Failed to get configuration state from Storage API: {e}")
+            return {}
 
-    def _set_config_state_to_api(self, state: dict) -> None:
+    def _save_config_state(self, state: dict) -> None:
         """Set configuration-level state to Storage API (shared across all rows)."""
         if not self._storage_api_token or not self._config_id:
             logging.debug("No Storage API token or config ID, using local state file")
@@ -70,37 +80,54 @@ class Component(ComponentBase):
             return
 
         try:
-            url = f"{self._storage_api_url}/v2/storage/components/keboola.ex-acumatica/configs/{self._config_id}/state"
+            url = (
+                self._storage_api_url
+                + "/v2/storage/branch/default/components/"
+                + self._component_id
+                + "/configs/"
+                + self._config_id
+                + "/state"
+            )
+
             headers = {"X-StorageApi-Token": self._storage_api_token, "Content-Type": "application/json"}
-            # Storage API expects state nested under 'state' key
             payload = {"state": state}
             response = requests.put(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             logging.debug("Configuration state saved to Storage API")
         except Exception as e:
-            logging.warning(f"Failed to save configuration state to API: {e}. Using local state file.")
-            self.write_state_file(state)
+            logging.error(f"Failed to save configuration state to API: {e}")
 
-    def _init_client(self) -> None:
+    def _encrypt_value(self, value: str) -> str:
+        """Encrypt a value using Keboola encryption API."""
+        url = "https://encryption.keboola.com/encrypt"
+        params = {
+            "componentId": self._component_id,
+            "projectId": self._project_id,
+        }
+        headers = {"Content-Type": "text/plain"}
+        response = requests.post(url, data=value, params=params, headers=headers, timeout=30)
+        response.raise_for_status()
+        return response.text
+
+    def _init_client(self) -> AcumaticaClient:
         """Initialize Acumatica client from state or OAuth credentials."""
         logging.debug("Initializing Acumatica client")
-        # Get configuration-level state (shared across all rows)
-        state = self._get_config_state_from_api()
-        state_oauth_token = state.get(KEY_STATE_OAUTH_TOKEN_DICT)
 
-        if self._state_contains_oauth_token(state_oauth_token):
-            logging.debug("Initializing client from state")
-            self._init_client_from_state(state_oauth_token)
-        else:
-            logging.debug("Initializing client from OAuth credentials or username/password")
-            self._init_client_from_config()
+        if self._state:
+            try:
+                logging.debug("Initializing client from state")
+                state_oauth_token = self._state.get(KEY_STATE_OAUTH_TOKEN_DICT)
+                return self._init_client_from_state(state_oauth_token)
+            except json.JSONDecodeError:
+                logging.warning(
+                    "Failed to initialize client from state: error decoding JSON state. Keys: %s",
+                    ", ".join(sorted(self._state.keys())),
+                )
+            except Exception as e:
+                logging.warning(f"Failed to initialize client from state: {e}")
 
-    def _state_contains_oauth_token(self, state_oauth_token: Any) -> bool:
-        """Check if state contains valid OAuth token."""
-        if not state_oauth_token:
-            return False
-        oauth_data = self._load_state_oauth(state_oauth_token)
-        return bool(oauth_data.get("access_token"))
+        logging.debug("Initializing client from configuration")
+        return self._init_client_from_configuration()
 
     @staticmethod
     def _load_state_oauth(state_oauth_token: Any) -> dict:
@@ -112,80 +139,94 @@ class Component(ComponentBase):
         else:
             return {}
 
-    def _init_client_from_state(self, state_oauth_token: Any) -> None:
+    def _init_client_from_state(self, state_oauth_token: Any) -> AcumaticaClient:
         """Initialize client using OAuth credentials from state."""
         oauth_data = self._load_state_oauth(state_oauth_token)
 
-        # Try to get client credentials from OAuth credentials object
-        try:
-            oauth_creds = self.configuration.oauth_credentials
-            client_id = getattr(oauth_creds, "#appKey", None) or getattr(oauth_creds, "appKey", None)
-            client_secret = getattr(oauth_creds, "#appSecret", None) or getattr(oauth_creds, "appSecret", None)
-        except Exception:
-            client_id = oauth_data.get("client_id")
-            client_secret = oauth_data.get("client_secret")
-            logging.debug("Using client credentials from state")
+        logging.info(
+            f"Loading OAuth tokens from state: access_token={oauth_data.get('access_token', '')[:8]}..., "
+            f"refresh_token={oauth_data.get('refresh_token', '')[:8]}..."
+        )
 
         api_config = self.config.get_api_config()
         api_config.oauth_access_token = oauth_data.get("access_token", "")
         api_config.oauth_refresh_token = oauth_data.get("refresh_token", "")
-        api_config.oauth_client_id = client_id or ""
-        api_config.oauth_client_secret = client_secret or ""
+        api_config.oauth_expires_in = oauth_data.get("expires_in", 0)
+        api_config.oauth_token_received_at = oauth_data.get("token_received_at", 0.0)
+        api_config.oauth_scope = oauth_data.get("scope", "")
+        api_config.oauth_client_id = oauth_data.get("client_id", "")
+        api_config.oauth_client_secret = oauth_data.get("client_secret", "")
 
-        self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
+        return AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
 
-    def _init_client_from_config(self) -> None:
-        """Initialize client using OAuth credentials from configuration or username/password."""
-        # Check if OAuth credentials are available
-        oauth_creds = None
+    def _init_client_from_configuration(self) -> AcumaticaClient:
+        """Initialize client using OAuth credentials from configuration."""
         try:
             oauth_creds = self.configuration.oauth_credentials
-            if oauth_creds and oauth_creds.data:
-                logging.info("OAuth credentials detected, using OAuth authentication")
-
-                # Get client credentials with # prefix for encrypted fields
-                client_id = getattr(oauth_creds, "#appKey", None) or getattr(oauth_creds, "appKey", None)
-                client_secret = getattr(oauth_creds, "#appSecret", None) or getattr(oauth_creds, "appSecret", None)
+            if oauth_creds:
+                logging.debug("OAuth credentials detected, using OAuth authentication")
 
                 api_config = self.config.get_oauth_api_config(oauth_creds)
-                # Override with proper client credentials
-                api_config.oauth_client_id = client_id or api_config.oauth_client_id
-                api_config.oauth_client_secret = client_secret or api_config.oauth_client_secret
 
-                self.client = AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
-                return
+                client_id = getattr(oauth_creds, "appKey", None)
+                client_secret = getattr(oauth_creds, "appSecret", None)
+
+                if client_id:
+                    api_config.oauth_client_id = client_id
+                if client_secret:
+                    api_config.oauth_client_secret = client_secret
+
+                logging.debug(
+                    f"Loading OAuth tokens from config: access_token={api_config.oauth_access_token[:8]}..., "
+                    f"refresh_token={api_config.oauth_refresh_token[:8]}..."
+                )
+
+                return AcumaticaClient(api_config, on_token_refresh=self.save_oauth_token_to_state)
         except (AttributeError, KeyError):
             logging.debug("No OAuth credentials found")
 
-        # Fallback to username/password
-        logging.info("Using username/password authentication")
-        self.client = AcumaticaClient(self.config.get_api_config(), on_token_refresh=self.save_oauth_token_to_state)
+        logging.warning("Using username/password authentication")
+        return AcumaticaClient(self.config.get_api_config(), on_token_refresh=self.save_oauth_token_to_state)
 
     def save_oauth_token_to_state(self) -> None:
-        """Save the current OAuth token to state (without refreshing)."""
-        logging.debug("Saving OAuth token to state")
+        """Save the current OAuth token to state."""
+        storage_location = (
+            "Storage API (global config)" if (self._storage_api_token and self._config_id) else "local state file"
+        )
+        logging.info(
+            f"Saving OAuth tokens to {storage_location}: access_token={self.client.config.oauth_access_token[:8]}..., "
+            f"refresh_token={self.client.config.oauth_refresh_token[:8]}..."
+        )
 
-        # Log the refresh token we're about to save
-        logging.info(f"Saving refresh_token (first 20 chars): {self.client.config.oauth_refresh_token[:20]}...")
-
-        # Save current tokens to state
         oauth_token_dict = {
             "access_token": str(self.client.config.oauth_access_token),
             "refresh_token": str(self.client.config.oauth_refresh_token),
+            "expires_in": int(self.client.config.oauth_expires_in),
+            "token_received_at": float(self.client.config.oauth_token_received_at),
+            "scope": str(self.client.config.oauth_scope),
             "client_id": str(self.client.config.oauth_client_id),
             "client_secret": str(self.client.config.oauth_client_secret),
             "token_type": "Bearer",
         }
 
-        # Update in-memory state
+        token_dict_json = json.dumps(oauth_token_dict)
+        if self._storage_api_token and self._config_id:
+            try:
+                encrypted_value = self._encrypt_value(token_dict_json)
+                logging.debug("OAuth token dict encrypted successfully")
+            except Exception as e:
+                logging.warning(f"Failed to encrypt OAuth token dict: {e}")
+                raise
+        else:
+            encrypted_value = token_dict_json
+
         if self._state is None:
             self._state = {}
-        self._state[KEY_STATE_OAUTH_TOKEN_DICT] = json.dumps(oauth_token_dict)
+        self._state[KEY_STATE_OAUTH_TOKEN_DICT] = encrypted_value
 
-        # Write to configuration-level state (shared across all rows)
-        logging.info(f"WRITING configuration state with {len(self._state)} keys")
-        self._set_config_state_to_api(self._state)
-        logging.info("OAuth token saved to configuration state")
+        logging.info(f"WRITING {len(self._state)} keys to {storage_location}")
+        self._save_config_state(self._state)
+        logging.info(f"OAuth tokens successfully saved to {storage_location}")
 
     def refresh_token_and_save_state(self) -> None:
         """Refresh the OAuth token and save it to state."""
@@ -201,17 +242,9 @@ class Component(ComponentBase):
     def run(self) -> None:
         """Main execution - orchestrates the component workflow."""
         try:
-            # Load configuration-level state (shared across all rows)
-            self._state = self._get_config_state_from_api()
-            logging.info(f"Loaded configuration state: {list(self._state.keys())}")
-
             logging.info("Starting Acumatica data extraction")
 
             self.client.authenticate()
-
-            # Save OAuth token to state if using OAuth (don't refresh, just save)
-            if self.client.config.oauth_access_token and self.client.config.oauth_refresh_token:
-                self.save_oauth_token_to_state()
 
             try:
                 self._extract_endpoint()
@@ -250,8 +283,8 @@ class Component(ComponentBase):
             top=self.config.get_effective_page_size(),
         )
 
-        output_table_name = self.config.get_output_table_name()
-        incremental = self.config.is_incremental()
+        output_table_name = f"{self.config.endpoint}.csv"
+        incremental = self.config.destination.load_type == "incremental_load"
         records_written = self._write_entities_to_table(entities, output_table_name, incremental)
 
         logging.info(f"Extracted {records_written} records from {self.config.endpoint}")
@@ -280,22 +313,23 @@ class Component(ComponentBase):
             all_columns.update(flattened.keys())
 
         records_written = len(flattened_records)
-        csv_columns = sorted(all_columns)  # Sort for consistent column order
+        csv_columns = sorted(all_columns)
 
         if records_written > 0:
-            # Create table definition to get the proper output path
-            table = self.create_out_table_definition(name=f"{table_name}.csv", incremental=incremental, primary_key=[])
+            table = self.create_out_table_definition(name=table_name, incremental=incremental, primary_key=[])
+            logging.info(f"Table full_path: {table.full_path}")
+            logging.info(f"Writing {records_written} records to {table.full_path}")
 
-            # Write data to the table using full_path from table definition
             with open(table.full_path, mode="w", encoding="utf-8", newline="") as out_file:
                 writer = csv.DictWriter(out_file, fieldnames=csv_columns)
                 writer.writeheader()
                 for record in flattened_records:
                     writer.writerow(record)
 
+            logging.info("File written, now writing manifest")
             # Write manifest after all data is written
             self.write_manifest(table)
-            logging.debug(f"Created manifest for table: {table_name}")
+            logging.info(f"Manifest written for table: {table_name}")
 
         return records_written
 
@@ -333,24 +367,19 @@ class Component(ComponentBase):
         return dict(items)
 
     def _update_state(self) -> None:
-        """
-        Update state file with new information.
-        """
+        """Update state file with new information."""
         from datetime import datetime
 
-        # Update in-memory state with timestamp
         if self._state is None:
             self._state = {}
         self._state["last_run_timestamp"] = datetime.now().isoformat()
 
-        # Debug: log what we're writing
         if KEY_STATE_OAUTH_TOKEN_DICT in self._state:
             oauth_data = json.loads(self._state[KEY_STATE_OAUTH_TOKEN_DICT])
             logging.info(f"_update_state writing refresh_token (first 20 chars): {oauth_data['refresh_token'][:20]}...")
 
-        # Write to configuration-level state (shared across all rows)
         logging.info(f"WRITING configuration state with {len(self._state)} keys in _update_state")
-        self._set_config_state_to_api(self._state)
+        self._save_config_state(self._state)
         logging.debug("Configuration state updated")
 
     @sync_action("listTenantVersions")

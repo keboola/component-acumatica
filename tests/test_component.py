@@ -83,7 +83,6 @@ class TestComponent(unittest.TestCase):
                 "override_global_page_size": False,
                 "row_page_size": 2500,
                 "destination": {
-                    "output_table_name": "customers",
                     "load_type": "full_load",
                     "primary_keys": "",
                 },
@@ -125,7 +124,7 @@ class TestComponent(unittest.TestCase):
         self.assertEqual(call_args.kwargs["endpoint"], "Customer")
 
         # Verify output file was created
-        output_file = self.test_data_dir / "out" / "tables" / "customers.csv"
+        output_file = self.test_data_dir / "out" / "tables" / "Customer.csv"
         self.assertTrue(output_file.exists())
 
         # Verify CSV content

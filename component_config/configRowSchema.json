@@ -85,20 +85,13 @@
         "load_type"
       ],
       "properties": {
-        "output_table_name": {
-          "type": "string",
-          "title": "Storage Table Name",
-          "description": "Name of the table stored in Storage. Defaults to report type name if not specified.",
-          "default": "",
-          "propertyOrder": 1
-        },
         "load_type": {
           "type": "string",
           "format": "select",
           "title": "Load Type",
           "description": "If Full load is used, the destination table will be overwritten every run. If incremental load is used, data will be upserted into the destination table. Tables with a primary key will have rows updated, tables without a primary key will have rows appended.",
           "default": "full_load",
-          "propertyOrder": 2,
+          "propertyOrder": 1,
           "enum": [
             "full_load",
             "incremental_load"
@@ -115,7 +108,7 @@
           "format": "select",
           "title": "Primary Keys",
           "description": "Select primary key columns for incremental loads. Use the 'Get Columns' button to load available columns from the endpoint schema.",
-          "propertyOrder": 3,
+          "propertyOrder": 2,
           "enum": [],
           "items": {
             "type": "string"

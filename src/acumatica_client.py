@@ -9,6 +9,7 @@ Handles all interactions with the Acumatica REST API including:
 """
 
 import logging
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -36,6 +37,29 @@ class AcumaticaClient:
         self._authenticated = False
         self.on_token_refresh = on_token_refresh
 
+    def _is_token_expired(self) -> bool:
+        """Check if the OAuth access token is expired or about to expire.
+
+        Returns:
+            True if token is expired or expires within 60 seconds.
+        """
+        if not self.config.oauth_expires_in or not self.config.oauth_token_received_at:
+            # No expiration info, assume valid
+            return False
+
+        # Calculate expiration time from received_at + expires_in
+        expires_at = self.config.oauth_token_received_at + self.config.oauth_expires_in
+
+        # Add 60 second buffer to refresh before actual expiration
+        current_time = time.time()
+        time_until_expiry = expires_at - current_time
+
+        if time_until_expiry <= 60:
+            logging.info(f"Token expires in {time_until_expiry:.0f} seconds, treating as expired")
+            return True
+
+        return False
+
     def _create_session(self) -> requests.Session:
         """
         Create requests session with retry strategy.
@@ -62,24 +86,34 @@ class AcumaticaClient:
         """
         Authenticate with Acumatica API.
 
-        Uses OAuth 2.0 Bearer token if available, otherwise falls back to username/password authentication.
-        Stores session cookies for subsequent requests.
+        For OAuth: Sets up Bearer token headers and proactively refreshes if expired.
+        For username/password: Performs login and stores session cookies.
 
         Raises:
-            requests.exceptions.RequestException: If authentication fails.
+            ValueError: If no valid authentication method is available.
         """
         # Try OAuth first if access token is available
         if self.config.oauth_access_token:
-            logging.info(f"Authenticating with OAuth 2.0 at {self.base_url}")
-            try:
-                self._authenticate_oauth()
-                return
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"OAuth authentication failed: {e}. Falling back to username/password.")
+            logging.info(f"Using OAuth 2.0 authentication (access_token: {self.config.oauth_access_token[:8]}...)")
+
+            # Check if token is expired and refresh proactively
+            if self._is_token_expired() and self.config.oauth_refresh_token:
+                logging.info(
+                    f"Access token expired, refreshing with refresh_token ({self.config.oauth_refresh_token[:8]}...)"
+                )
+                try:
+                    self._refresh_oauth_token()
+                except Exception as refresh_error:
+                    logging.error(f"Proactive token refresh failed: {refresh_error}")
+                    # Continue anyway, reactive refresh will catch it if needed
+
+            # Set OAuth header and mark as authenticated
+            self._setup_oauth_headers()
+            return
 
         # Fallback to username/password authentication
         if self.config.acumatica_username and self.config.acumatica_password:
-            logging.info(f"Authenticating with username/password at {self.base_url}")
+            logging.info(f"Using username/password authentication (username: {self.config.acumatica_username})")
             self._authenticate_username_password()
         else:
             raise ValueError(
@@ -87,16 +121,17 @@ class AcumaticaClient:
                 "Please provide either OAuth credentials or username/password."
             )
 
-    def _authenticate_oauth(self) -> None:
+    def _setup_oauth_headers(self) -> None:
         """
-        Authenticate using OAuth 2.0 Bearer token.
+        Configure session headers for OAuth 2.0 Bearer token authentication.
 
-        Sets the Authorization header for subsequent requests.
-
-        Note: Token refresh is handled automatically by Keboola's OAuth Broker in production.
-        For local testing, tokens expire after 1 hour and must be manually refreshed.
+        Sets the Authorization header with the access token. Actual token validation
+        occurs when API requests are made. Token expiration is checked proactively
+        before requests, and tokens are refreshed reactively on 401 responses.
         """
-        # Set the Bearer token in session headers
+        logging.info(
+            f"Setting OAuth Bearer token in session headers (access_token: {self.config.oauth_access_token[:8]}...)"
+        )
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.config.oauth_access_token}",
@@ -104,40 +139,9 @@ class AcumaticaClient:
                 "Content-Type": "application/json",
             }
         )
-
-        # Test the OAuth token by making a simple request
-        test_url = f"{self.base_url}/entity/"
-        try:
-            response = self.session.get(test_url, timeout=30)
-            response.raise_for_status()
-            self._authenticated = True
-            logging.info("Successfully authenticated with OAuth 2.0")
-            logging.debug(f"Session headers: {dict(self.session.headers)}")
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401 and self.config.oauth_refresh_token:
-                logging.warning("Access token expired, attempting to refresh...")
-                try:
-                    self._refresh_oauth_token()
-                    # Update session header with new token and retry
-                    self.session.headers.update({"Authorization": f"Bearer {self.config.oauth_access_token}"})
-                    response = self.session.get(test_url, timeout=30)
-                    response.raise_for_status()
-                    self._authenticated = True
-                    logging.info("Successfully authenticated with refreshed OAuth token")
-                    return
-                except Exception as refresh_error:
-                    logging.error(f"Token refresh failed: {refresh_error}")
-                    raise ValueError(
-                        "OAuth token is invalid or expired and refresh failed. "
-                        "Please get a new token using: ./scripts/oauth_helper.sh"
-                    )
-            elif e.response.status_code == 401:
-                raise ValueError(
-                    "OAuth token is invalid or expired. "
-                    "In production, Keboola automatically refreshes tokens. "
-                    "For local testing, please get a new token using the oauth_helper.sh script."
-                )
-            raise
+        self._authenticated = True
+        logging.info("OAuth 2.0 headers configured")
+        logging.debug(f"Session headers: {dict(self.session.headers)}")
 
     def _refresh_oauth_token(self) -> None:
         """
@@ -168,7 +172,7 @@ class AcumaticaClient:
         try:
             logging.debug(f"Refreshing token at: {token_url}")
             logging.debug(f"With client_id: {self.config.oauth_client_id}")
-            logging.debug(f"Refresh token (first 20 chars): {self.config.oauth_refresh_token[:20]}...")
+            logging.debug(f"Refresh token (first 8 chars): {self.config.oauth_refresh_token[:8]}...")
 
             response = requests.post(token_url, data=data, timeout=30)
 
@@ -181,13 +185,25 @@ class AcumaticaClient:
 
             # Update the access token in config
             self.config.oauth_access_token = token_data.get("access_token", "")
+            logging.info(f"Received new access_token: {self.config.oauth_access_token[:8]}...")
+
             if "refresh_token" in token_data:
-                old_refresh = self.config.oauth_refresh_token[:20]
+                old_refresh = self.config.oauth_refresh_token[:8]
                 self.config.oauth_refresh_token = token_data["refresh_token"]
-                new_refresh = self.config.oauth_refresh_token[:20]
-                logging.info(
-                    f"Token refresh: OLD refresh_token: {old_refresh}... -> NEW refresh_token: {new_refresh}..."
-                )
+                new_refresh = self.config.oauth_refresh_token[:8]
+                logging.info(f"Refresh token rotated: {old_refresh}... -> {new_refresh}...")
+
+            # Store token expiration from OAuth 2.0 spec (RFC 6749 Section 5.1)
+            expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour if not provided
+            self.config.oauth_expires_in = expires_in
+            self.config.oauth_token_received_at = time.time()
+            expires_at = self.config.oauth_token_received_at + expires_in
+            logging.info(f"Token expires in {expires_in} seconds (at {expires_at:.0f})")
+
+            # Store scope (OAuth 2.0 RFC 6749 Section 5.1)
+            if "scope" in token_data:
+                self.config.oauth_scope = token_data["scope"]
+                logging.debug(f"Token scope: {self.config.oauth_scope}")
 
             logging.info("Successfully refreshed OAuth token")
 
@@ -284,6 +300,20 @@ class AcumaticaClient:
         if not self._authenticated:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
 
+        # Check if token is expired and refresh proactively
+        if self.config.oauth_access_token and self._is_token_expired() and self.config.oauth_refresh_token:
+            logging.info(
+                "Token expired before API request, refreshing with "
+                f"refresh_token ({self.config.oauth_refresh_token[:8]}...)"
+            )
+            try:
+                self._refresh_oauth_token()
+                # Update session header with new token
+                self.session.headers.update({"Authorization": f"Bearer {self.config.oauth_access_token}"})
+            except Exception as refresh_error:
+                logging.error(f"Proactive token refresh failed: {refresh_error}")
+                # Continue anyway, reactive refresh will catch it if needed
+
         endpoint_url = f"{self.base_url}/entity/{tenant_version}/{endpoint}"
 
         skip = 0
@@ -313,7 +343,10 @@ class AcumaticaClient:
 
                 # Attempt token refresh on 401 for OAuth
                 if response.status_code == 401 and self.config.oauth_access_token and self.config.oauth_refresh_token:
-                    logging.warning("Received 401, attempting to refresh OAuth token...")
+                    logging.warning(
+                        "Received 401 during data fetch, refreshing with "
+                        f"refresh_token ({self.config.oauth_refresh_token[:8]}...)"
+                    )
                     try:
                         self._refresh_oauth_token()
                         # Update session header with new token and retry

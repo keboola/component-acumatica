@@ -7,6 +7,7 @@ Defines the structure of configuration parameters using Pydantic models.
 import logging
 from dataclasses import dataclass
 
+from keboola.component.dao import OauthCredentials
 from keboola.component.exceptions import UserException
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -22,6 +23,9 @@ class AcumaticaApiConfig:
     oauth_refresh_token: str = ""
     oauth_client_id: str = ""
     oauth_client_secret: str = ""
+    oauth_expires_in: int = 0  # Token lifetime in seconds (from OAuth spec)
+    oauth_token_received_at: float = 0.0  # Unix timestamp when token was received
+    oauth_scope: str = ""  # OAuth token scope (e.g., "api offline_access")
 
 
 class Destination(BaseModel):
@@ -87,7 +91,7 @@ class Configuration(BaseModel):
             oauth_client_secret="",
         )
 
-    def get_oauth_api_config(self, oauth_credentials) -> AcumaticaApiConfig:
+    def get_oauth_api_config(self, oauth_credentials: OauthCredentials) -> AcumaticaApiConfig:
         """Extract API-specific configuration with OAuth credentials.
 
         Args:
@@ -103,19 +107,10 @@ class Configuration(BaseModel):
             oauth_refresh_token=oauth_data.get("refresh_token", ""),
             oauth_client_id=oauth_data.get("client_id", ""),
             oauth_client_secret=oauth_data.get("client_secret", ""),
+            oauth_expires_in=oauth_data.get("expires_in", 0),
+            oauth_token_received_at=oauth_data.get("token_received_at", 0.0),
+            oauth_scope=oauth_data.get("scope", ""),
         )
-
-    def get_output_table_name(self) -> str:
-        """Get the output table name, defaulting to endpoint name if not specified."""
-        return self.destination.output_table_name or self.endpoint
-
-    def get_load_type(self) -> str:
-        """Get the load type from destination settings."""
-        return self.destination.load_type
-
-    def is_incremental(self) -> bool:
-        """Check if the load type is incremental."""
-        return self.destination.load_type == "incremental_load"
 
     def get_effective_page_size(self) -> int:
         """
