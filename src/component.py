@@ -252,8 +252,10 @@ class Component(ComponentBase):
                 self._update_state()
                 logging.info("Acumatica data extraction completed successfully")
             finally:
-                # Always logout to free up API user slot
-                self.client.logout()
+                # Logout for username/password auth to free up API user slot
+                # OAuth doesn't need logout
+                if self.client.config.acumatica_username and not self.client.config.oauth_access_token:
+                    self.client.logout()
 
         except UserException:
             raise
