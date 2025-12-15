@@ -75,16 +75,20 @@ class TestComponent(unittest.TestCase):
                 "acumatica_url": "https://test.acumatica.com",
                 "acumatica_username": "test_user",
                 "#acumatica_password": "test_pass",
-                "tenant_version": "Default/23.200.001",
-                "endpoint": "Customer",
-                "expand": "",
-                "filter_expr": "",
-                "select": "",
-                "override_global_page_size": False,
-                "row_page_size": 2500,
+                "page_size": 2500,
+                "endpoints": [
+                    {
+                        "enabled": True,
+                        "tenant_version": "Default/23.200.001",
+                        "endpoint": "Customer",
+                        "expand": "",
+                        "filter_expr": "",
+                        "select": "",
+                        "primary_keys": [],
+                    }
+                ],
                 "destination": {
                     "load_type": "full_load",
-                    "primary_keys": "",
                 },
                 "debug": False,
             }
