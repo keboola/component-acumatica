@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 from collections.abc import Iterator
+from datetime import datetime
 from typing import Any
 
 import requests
@@ -367,20 +368,12 @@ class Component(ComponentBase):
         return dict(items)
 
     def _update_state(self) -> None:
-        """Update state file with new information."""
-        from datetime import datetime
+        """Update local state file with last run timestamp."""
+        local_state = {"last_run_timestamp": datetime.now().isoformat()}
 
-        if self._state is None:
-            self._state = {}
-        self._state["last_run_timestamp"] = datetime.now().isoformat()
-
-        if KEY_STATE_OAUTH_TOKEN_DICT in self._state:
-            oauth_data = json.loads(self._state[KEY_STATE_OAUTH_TOKEN_DICT])
-            logging.info(f"_update_state writing refresh_token (first 20 chars): {oauth_data['refresh_token'][:20]}...")
-
-        logging.info(f"WRITING configuration state with {len(self._state)} keys in _update_state")
-        self._save_config_state(self._state)
-        logging.debug("Configuration state updated")
+        logging.info("Writing last_run_timestamp to local state file")
+        self.write_state_file(local_state)
+        logging.debug("Local state file updated")
 
     @sync_action("listTenantVersions")
     def list_tenant_versions(self):
