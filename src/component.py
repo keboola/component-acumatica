@@ -209,7 +209,8 @@ class Component(ComponentBase):
             )
 
             headers = {"X-StorageApi-Token": self._storage_api_token, "Content-Type": "application/json"}
-            payload = {"state": state}
+            # Wrap state in "component" key as required by Storage API
+            payload = {"state": {"component": state}}
             response = requests.put(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             logging.info("Configuration state saved to Storage API")
