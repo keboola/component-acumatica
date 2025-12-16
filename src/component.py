@@ -38,7 +38,8 @@ class Component(ComponentBase):
         self._component_id: str = env.component_id
         self._project_id: str = env.project_id
         self._storage_api_token: str = env.token
-        self._storage_api_url: str = env.url
+        self._storage_api_url: str = env.url or ""
+        self._encryption_api_url: str = self._storage_api_url.replace("connection", "encryption")
         self._config_id: str = env.config_id
         self._state = self.get_state_file()
 
@@ -47,7 +48,7 @@ class Component(ComponentBase):
 
     def _encrypt_value(self, value: str) -> str:
         """Encrypt a value using Keboola encryption API."""
-        url = "https://encryption.keboola.com/encrypt"
+        url = self._encryption_api_url + "/encrypt"
         params = {
             "componentId": self._component_id,
             "projectId": self._project_id,
