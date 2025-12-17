@@ -420,6 +420,7 @@ class AcumaticaClient:
 
         Returns:
             List of dicts with 'label' and 'value' keys for each tenant/version.
+            Sorted by tenant (ascending), then by version (descending with numeric sorting).
 
         Raises:
             requests.exceptions.RequestException: If request fails.
@@ -441,7 +442,25 @@ class AcumaticaClient:
             if tenant and version:
                 tenant_versions.add(f"{tenant}/{version}")
 
-        result = [{"label": tv, "value": tv} for tv in sorted(tenant_versions)]
+        # Sort by tenant (asc), then version (desc) with numeric sorting
+        def sort_key(tv: str):
+            parts = tv.split("/")
+            if len(parts) != 2:
+                return (tv, [])
+            tenant, version = parts
+            # Convert version to list of integers for proper numeric sorting
+            version_parts = []
+            for part in version.split("."):
+                try:
+                    version_parts.append(int(part))
+                except ValueError:
+                    version_parts.append(0)
+            # Return tuple: (tenant asc, version desc)
+            # Negate version parts for descending order
+            return (tenant, [-v for v in version_parts])
+
+        sorted_tvs = sorted(tenant_versions, key=sort_key)
+        result = [{"label": tv, "value": tv} for tv in sorted_tvs]
         logging.info(f"Found {len(result)} tenant/version combinations")
         return result
 
