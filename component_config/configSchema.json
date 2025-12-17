@@ -1,19 +1,151 @@
 {
   "type": "object",
-  "title": "extractor configuration",
+  "title": "Acumatica Extractor Configuration",
   "required": [
-    "print_hello"
+    "acumatica_url",
+    "endpoints"
   ],
   "properties": {
-    "print_hello": {
-      "type": "boolean",
-      "title": "Print Hello",
+    "acumatica_url": {
+      "type": "string",
+      "title": "Acumatica URL",
+      "description": "Full URL to your Acumatica instance (e.g., https://your-instance.acumatica.com)",
+      "format": "uri",
       "propertyOrder": 1
     },
-    "debug": {
-      "type": "boolean",
-      "title": "Debug",
+    "page_size": {
+      "type": "integer",
+      "title": "Page Size",
+      "description": "Number of records to fetch per API request",
+      "default": 2500,
+      "minimum": 1,
       "propertyOrder": 2
+    },
+    "endpoints": {
+      "type": "array",
+      "title": "Endpoints",
+      "description": "List of endpoints to extract",
+      "propertyOrder": 3,
+      "items": {
+        "type": "object",
+        "title": "Endpoint Configuration",
+        "required": [
+          "tenant_version",
+          "endpoint"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "format": "checkbox",
+            "title": "Enabled",
+            "description": "Enable or disable extraction for this endpoint",
+            "default": true,
+            "propertyOrder": 1
+          },
+          "tenant_version": {
+            "type": "string",
+            "title": "Tenant / Version",
+            "description": "Acumatica tenant and API version in format: tenant/version (e.g., Default/25.200.001)",
+            "propertyOrder": 2,
+            "enum": [],
+            "options": {
+              "async": {
+                "action": "listTenantVersions",
+                "label": "Load Tenants & Versions"
+              }
+            }
+          },
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint Name",
+            "description": "Acumatica entity endpoint (e.g., Customer, SalesOrder, Invoice)",
+            "propertyOrder": 3,
+            "enum": [],
+            "options": {
+              "async": {
+                "action": "listEndpoints",
+                "label": "Load Endpoints",
+                "watchFor": [
+                  "tenant_version"
+                ]
+              }
+            }
+          },
+          "expand": {
+            "type": "string",
+            "title": "Expand",
+            "description": "Related entities to expand (e.g., MainContact, Details)",
+            "default": "",
+            "propertyOrder": 4
+          },
+          "filter_expr": {
+            "type": "string",
+            "title": "Filter",
+            "description": "OData filter expression to filter records",
+            "default": "",
+            "propertyOrder": 5
+          },
+          "select": {
+            "type": "string",
+            "title": "Select",
+            "description": "OData select expression to choose specific fields",
+            "default": "",
+            "propertyOrder": 6
+          },
+          "primary_keys": {
+            "type": "array",
+            "format": "select",
+            "title": "Primary Keys",
+            "description": "Select primary key columns for incremental loads. Use the 'Get Columns' button to load available columns from the endpoint schema.",
+            "propertyOrder": 7,
+            "enum": [],
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "options": {
+              "async": {
+                "action": "getOutputColumns",
+                "label": "Get Columns",
+                "watchFor": [
+                  "tenant_version",
+                  "endpoint"
+                ]
+              },
+              "tags": true,
+              "creatable": true
+            }
+          }
+        }
+      }
+    },
+    "destination": {
+      "type": "object",
+      "title": "Destination",
+      "propertyOrder": 4,
+      "required": [
+        "load_type"
+      ],
+      "properties": {
+        "load_type": {
+          "type": "string",
+          "format": "select",
+          "title": "Load Type",
+          "description": "If Full load is used, the destination tables will be overwritten every run. If incremental load is used, data will be upserted into the destination tables. Tables with a primary key will have rows updated, tables without a primary key will have rows appended.",
+          "default": "full_load",
+          "propertyOrder": 1,
+          "enum": [
+            "full_load",
+            "incremental_load"
+          ],
+          "options": {
+            "enum_titles": [
+              "Full Load",
+              "Incremental Load"
+            ]
+          }
+        }
+      }
     }
   }
 }
