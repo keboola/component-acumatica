@@ -6,6 +6,13 @@
     "endpoints"
   ],
   "properties": {
+    "acknowledge": {
+      "type": "boolean",
+      "title": "I understand I need to contact support to set up this component",
+      "format": "checkbox",
+      "description": "Due to OAuth implementation limitations, we currently need to help each new client set up the authorization. This needs to be done only ONCE",
+      "propertyOrder": 0
+    },
     "acumatica_url": {
       "type": "string",
       "title": "Acumatica URL",
