@@ -7,9 +7,8 @@ Mocks only the AcumaticaClient; uses real CSV/manifest verification.
 from unittest.mock import MagicMock
 
 import pytest
+from extractor_component import Component
 from keboola.component.exceptions import UserException
-
-from component import Component
 
 from .conftest import read_csv, read_state, write_config, write_state
 
@@ -62,7 +61,7 @@ def run_component(kbc_datadir, mocker, mock_client):
 
     def _run(params=None, action="run", authorization=None, client=mock_client):
         write_config(kbc_datadir, params or BASE_PARAMS, action=action, authorization=authorization)
-        mocker.patch("component.AcumaticaClient", return_value=client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=client)
         Component().run()
         return kbc_datadir
 
@@ -177,7 +176,7 @@ class TestRunErrorHandling:
         params = {**BASE_PARAMS, "endpoints": []}
         write_config(kbc_datadir, params)
         mock_client = MagicMock()
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         with pytest.raises(UserException, match="No endpoints configured"):
             Component().run()
 
@@ -190,7 +189,7 @@ class TestRunErrorHandling:
         mock_client = MagicMock()
         mock_client.oauth_access_token = ""
         mock_client.acumatica_username = ""
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         Component().run()
         mock_client.get_entities.assert_not_called()
 
@@ -198,7 +197,7 @@ class TestRunErrorHandling:
         write_config(kbc_datadir, BASE_PARAMS)
         mock_client = MagicMock()
         mock_client.authenticate.side_effect = UserException("auth failed")
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         with pytest.raises(UserException, match="auth failed"):
             Component().run()
 
@@ -206,7 +205,7 @@ class TestRunErrorHandling:
         write_config(kbc_datadir, BASE_PARAMS)
         mock_client = MagicMock()
         mock_client.authenticate.side_effect = RuntimeError("unexpected boom")
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         with pytest.raises(UserException, match="Extraction failed"):
             Component().run()
 
@@ -214,7 +213,7 @@ class TestRunErrorHandling:
         write_config(kbc_datadir, BASE_PARAMS)
         mock_client = MagicMock()
         mock_client.authenticate.side_effect = Exception("too many 500 error responses for auth/login endpoint")
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         with pytest.raises(UserException, match="API Login Limit"):
             Component().run()
 
@@ -232,7 +231,7 @@ class TestLogoutBehaviour:
         mock_client.acumatica_username = "admin"
         mock_client.oauth_access_token = ""
         mock_client.get_entities.return_value = iter([{"CustomerID": "C001"}])
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         Component().run()
         mock_client.logout.assert_called_once()
 
@@ -242,7 +241,7 @@ class TestLogoutBehaviour:
         mock_client.acumatica_username = ""
         mock_client.oauth_access_token = "test_access"
         mock_client.get_entities.return_value = iter([{"CustomerID": "C001"}])
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
         Component().run()
         mock_client.logout.assert_not_called()
 
@@ -259,7 +258,7 @@ class TestSyncActionErrors:
     def test_list_endpoints_no_endpoints_configured_raises(self, kbc_datadir, mocker, capsys):
         params = {**BASE_PARAMS, "endpoints": []}
         write_config(kbc_datadir, params, action="listEndpoints")
-        mocker.patch("component.AcumaticaClient", return_value=MagicMock())
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().list_endpoints()
         assert "Tenant/Version must be selected" in capsys.readouterr().err
@@ -270,7 +269,7 @@ class TestSyncActionErrors:
             "endpoints": [{**BASE_PARAMS["endpoints"][0], "tenant_version": ""}],
         }
         write_config(kbc_datadir, params, action="listEndpoints")
-        mocker.patch("component.AcumaticaClient", return_value=MagicMock())
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().list_endpoints()
         assert "Tenant/Version must be selected" in capsys.readouterr().err
@@ -278,7 +277,7 @@ class TestSyncActionErrors:
     def test_get_output_columns_no_endpoints_raises(self, kbc_datadir, mocker, capsys):
         params = {**BASE_PARAMS, "endpoints": []}
         write_config(kbc_datadir, params, action="getOutputColumns")
-        mocker.patch("component.AcumaticaClient", return_value=MagicMock())
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().get_output_columns()
         assert "Endpoint must be configured" in capsys.readouterr().err
@@ -289,7 +288,7 @@ class TestSyncActionErrors:
             "endpoints": [{**BASE_PARAMS["endpoints"][0], "tenant_version": ""}],
         }
         write_config(kbc_datadir, params, action="getOutputColumns")
-        mocker.patch("component.AcumaticaClient", return_value=MagicMock())
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().get_output_columns()
         assert "Tenant/Version must be selected" in capsys.readouterr().err
@@ -300,7 +299,7 @@ class TestSyncActionErrors:
             "endpoints": [{**BASE_PARAMS["endpoints"][0], "endpoint": ""}],
         }
         write_config(kbc_datadir, params, action="getOutputColumns")
-        mocker.patch("component.AcumaticaClient", return_value=MagicMock())
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().get_output_columns()
         assert "Endpoint must be selected" in capsys.readouterr().err
@@ -309,8 +308,10 @@ class TestSyncActionErrors:
         write_config(kbc_datadir, BASE_PARAMS, action="getOutputColumns")
         mock_client = MagicMock()
         mock_client.get_swagger_data.return_value = {"definitions": {}}
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
-        mocker.patch("component.SwaggerParser").return_value.get_entity_primary_key_candidates.return_value = []
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
+        mocker.patch(
+            "shared.acumatica_base.SwaggerParser"
+        ).return_value.get_entity_primary_key_candidates.return_value = []
         with pytest.raises(SystemExit):
             Component().get_output_columns()
         assert "No columns found" in capsys.readouterr().err
@@ -345,7 +346,7 @@ class TestOAuthClientInit:
             m.get_entities.return_value = iter([])
             return m
 
-        mocker.patch("component.AcumaticaClient", side_effect=capture_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", side_effect=capture_client)
         Component().run()
 
         assert captured.get("oauth_access_token") == "state_access"
@@ -364,7 +365,7 @@ class TestOAuthClientInit:
             m.get_entities.return_value = iter([])
             return m
 
-        mocker.patch("component.AcumaticaClient", side_effect=capture_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", side_effect=capture_client)
         Component().run()
 
         assert captured.get("oauth_access_token") == "test_access"
@@ -384,7 +385,7 @@ class TestOAuthClientInit:
             m.get_entities.return_value = iter([])
             return m
 
-        mocker.patch("component.AcumaticaClient", side_effect=capture_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", side_effect=capture_client)
         Component().run()
 
         assert captured.get("acumatica_username") == "admin"

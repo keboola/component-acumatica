@@ -3,8 +3,7 @@ Tests for Component._flatten_entity — edge cases beyond the basics in test_com
 """
 
 import pytest
-
-from component import Component
+from extractor_component import Component
 
 
 class TestFlattenEntityEdgeCases:

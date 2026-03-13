@@ -2,7 +2,7 @@
 Tests for SwaggerParser — schema loading, ref resolution, entity lookup, and column extraction.
 """
 
-from swagger_parser import SwaggerColumn, SwaggerParser
+from shared.swagger_parser import SwaggerColumn, SwaggerParser
 
 # ---------------------------------------------------------------------------
 # Fixtures

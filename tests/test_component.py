@@ -5,9 +5,8 @@ Tests for Acumatica Extractor Component.
 from unittest.mock import MagicMock
 
 import pytest
+from extractor_component import Component
 from keboola.component.exceptions import UserException
-
-from component import Component
 
 from .conftest import read_csv, write_config
 
@@ -89,7 +88,7 @@ class TestRun:
 
         mock_client = MagicMock()
         mock_client.get_entities.return_value = iter([{"CustomerID": "C001", "CustomerName": "Test Customer"}])
-        mock_acumatica_client = mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mock_acumatica_client = mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         Component().run()
 
@@ -111,7 +110,7 @@ class TestRun:
                 {"CustomerID": "C002", "CustomerName": "Test Customer 2"},
             ]
         )
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         Component().run()
 
@@ -156,7 +155,7 @@ class TestRun:
             iter([{"CustomerID": "C001", "CustomerName": "Test Customer"}]),
             iter([{"OrderNbr": "SO001", "CustomerID": "C001"}]),
         ]
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         Component().run()
 
@@ -172,7 +171,7 @@ class TestSyncActions:
 
         mock_client = MagicMock()
         mock_client.get_tenant_versions.return_value = ["Default/25.200.001", "Default/24.200.001"]
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         result = Component().list_tenant_versions()
 
@@ -184,7 +183,7 @@ class TestSyncActions:
 
         mock_client = MagicMock()
         mock_client.get_endpoints.return_value = ["Customer", "SalesOrder", "Invoice"]
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         result = Component().list_endpoints()
 
@@ -196,7 +195,7 @@ class TestSyncActions:
 
         mock_client = MagicMock()
         mock_client.get_swagger_data.return_value = {"swagger": "2.0"}
-        mocker.patch("component.AcumaticaClient", return_value=mock_client)
+        mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=mock_client)
 
         mock_col1 = MagicMock()
         mock_col1.name = "CustomerID"
@@ -207,7 +206,7 @@ class TestSyncActions:
 
         mock_parser = MagicMock()
         mock_parser.get_entity_primary_key_candidates.return_value = [mock_col1, mock_col2]
-        mocker.patch("component.SwaggerParser", return_value=mock_parser)
+        mocker.patch("shared.acumatica_base.SwaggerParser", return_value=mock_parser)
 
         result = Component().get_output_columns()
 

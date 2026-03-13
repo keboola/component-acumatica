@@ -9,8 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-
-from acumatica_client import AcumaticaClient
+from shared.acumatica_client import AcumaticaClient
 
 BASE_URL = "https://example.acumatica.com"
 

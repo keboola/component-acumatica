@@ -1,50 +1,35 @@
 """
-Acumatica Extractor Component.
+Shared Acumatica component base — sync actions and token management mixin.
 
-Extracts data from Acumatica ERP system via REST API and saves to Keboola tables.
+Provides everything that is identical between the extractor and writer:
+- OAuth token management (init from state/config, save, refresh)
+- Sync action implementations (listTenantVersions, listEndpoints, getOutputColumns)
 """
 
-import csv
 import json
 import logging
-import sys
-from collections.abc import Iterator
-from datetime import datetime
-from typing import Any
 
 import requests
-from keboola.component.base import ComponentBase, sync_action
+from keboola.component.base import sync_action
 from keboola.component.exceptions import UserException
 
-from acumatica_client import AcumaticaClient
-from configuration import Configuration, EndpointConfig
-from swagger_parser import SwaggerParser
+from shared.acumatica_client import AcumaticaClient
+from shared.swagger_parser import SwaggerParser
 
 KEY_STATE_OAUTH_TOKEN_DICT = "#oauth_token_dict"
 
 
-class Component(ComponentBase):
+class AcumaticaSyncActionsMixin:
     """
-    Acumatica Extractor Component.
+    Mixin providing shared sync action implementations and token management for Acumatica components.
 
-    Extracts data from configured Acumatica endpoint and writes result to output table.
+    Expects the inheriting class to have:
+      - self.config  — AcumaticaConnectionConfig (or subclass)
+      - self.client  — AcumaticaClient
+      - self._state  — dict | None
+      - self._component_id, self._project_id, self._storage_api_token,
+        self._storage_api_url, self._config_id  — environment variables
     """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._state: dict[str, Any] | None = None
-
-        env = self.environment_variables
-        self._component_id: str = env.component_id
-        self._project_id: str = env.project_id
-        self._storage_api_token: str = env.token
-        self._storage_api_url: str = env.url or ""
-        self._encryption_api_url: str = self._storage_api_url.replace("connection", "encryption")
-        self._config_id: str = env.config_id
-        self._state = self.get_state_file()
-
-        self.config = Configuration(**self.configuration.parameters)
-        self.client: AcumaticaClient = self._init_client()
 
     def _encrypt_value(self, value: str) -> str:
         """Encrypt a value using Keboola encryption API."""
@@ -67,7 +52,6 @@ class Component(ComponentBase):
                 logging.debug("Initializing client from state")
                 state_oauth_token = self._state.get(KEY_STATE_OAUTH_TOKEN_DICT)
 
-                # Check if state actually contains valid OAuth data
                 if state_oauth_token:
                     oauth_data = self._load_state_oauth(state_oauth_token)
                     if oauth_data.get("access_token") and oauth_data.get("refresh_token"):
@@ -86,7 +70,7 @@ class Component(ComponentBase):
         return self._init_client_from_configuration()
 
     @staticmethod
-    def _load_state_oauth(state_oauth_token: Any) -> dict:
+    def _load_state_oauth(state_oauth_token) -> dict:
         """Load OAuth data from state, handling both string and dict formats."""
         if isinstance(state_oauth_token, str):
             return json.loads(state_oauth_token)
@@ -95,7 +79,7 @@ class Component(ComponentBase):
         else:
             return {}
 
-    def _init_client_from_state(self, state_oauth_token: Any) -> AcumaticaClient:
+    def _init_client_from_state(self, state_oauth_token) -> AcumaticaClient:
         """Initialize client using OAuth credentials from state."""
         oauth_data = self._load_state_oauth(state_oauth_token)
 
@@ -170,7 +154,6 @@ class Component(ComponentBase):
 
         token_dict_json = json.dumps(oauth_token_dict)
 
-        # Only encrypt in Keboola production environment
         if self._component_id and self._project_id:
             try:
                 encrypted_value = self._encrypt_value(token_dict_json)
@@ -189,7 +172,6 @@ class Component(ComponentBase):
         self.write_state_file(self._state)
         logging.info("OAuth tokens successfully saved to local state file")
 
-        # Also save to Storage API for persistence in case component fails later
         self._save_config_state(self._state)
 
     def _save_config_state(self, state: dict) -> None:
@@ -209,7 +191,6 @@ class Component(ComponentBase):
             )
 
             headers = {"X-StorageApi-Token": self._storage_api_token, "Content-Type": "application/json"}
-            # Wrap state in "component" key as required by Storage API
             payload = {"state": {"component": state}}
             response = requests.put(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
@@ -220,174 +201,9 @@ class Component(ComponentBase):
     def refresh_token_and_save_state(self) -> None:
         """Refresh the OAuth token and save it to state."""
         logging.info("Refreshing OAuth token and saving to state")
-
-        # Refresh the token
         self.client._refresh_oauth_token()
-
-        # Save updated tokens to state
         self.save_oauth_token_to_state()
         logging.info("Token refreshed and saved to state")
-
-    def run(self) -> None:
-        """Main execution - orchestrates the component workflow."""
-        try:
-            logging.info("Starting Acumatica data extraction")
-
-            if not self.config.endpoints:
-                raise UserException("No endpoints configured. Please add at least one endpoint to extract.")
-
-            self.client.authenticate()
-
-            try:
-                # Extract each configured endpoint
-                enabled_endpoints = [ep for ep in self.config.endpoints if ep.enabled]
-                if not enabled_endpoints:
-                    logging.warning("No enabled endpoints configured. Skipping extraction.")
-                    return
-
-                for idx, endpoint_config in enumerate(enabled_endpoints, 1):
-                    logging.info(f"Processing endpoint {idx}/{len(enabled_endpoints)}: {endpoint_config.endpoint}")
-                    self._extract_endpoint(endpoint_config)
-
-                self._update_state()
-                logging.info(
-                    f"Acumatica data extraction completed successfully ({len(self.config.endpoints)} endpoints)"
-                )
-            finally:
-                # Logout only for username/password auth to free up API user slot
-                # OAuth doesn't need logout
-                if self.client.acumatica_username and not self.client.oauth_access_token:
-                    self.client.logout()
-
-        except UserException:
-            raise
-        except Exception as e:
-            error_msg = str(e)
-
-            # Check for API login limit in the error message
-            if "too many 500 error responses" in error_msg and "auth/login" in error_msg:
-                raise UserException(
-                    "API Login Limit reached. The Acumatica instance has too many active API sessions. "
-                    "Please wait for existing sessions to expire or contact your Acumatica administrator "
-                    "to increase the API user limit or manually log out active API users."
-                )
-
-            logging.exception("Unhandled error during extraction")
-            raise UserException(f"Extraction failed: {error_msg}")
-
-    def _extract_endpoint(self, endpoint_config: "EndpointConfig") -> None:
-        """Extract data from a single Acumatica endpoint."""
-        logging.info(f"Extracting endpoint: {endpoint_config.endpoint}")
-
-        entities = self.client.get_entities(
-            tenant_version=endpoint_config.tenant_version,
-            endpoint=endpoint_config.endpoint,
-            expand=endpoint_config.expand,
-            filter_expr=endpoint_config.filter_expr,
-            select=endpoint_config.select,
-            top=self.config.page_size,
-        )
-
-        output_table_name = f"{endpoint_config.endpoint}.csv"
-        incremental = self.config.destination.load_type == "incremental_load"
-        primary_keys = endpoint_config.primary_keys
-        records_written = self._write_entities_to_table(entities, output_table_name, incremental, primary_keys)
-
-        logging.info(f"Extracted {records_written} records from {endpoint_config.endpoint}")
-
-    def _write_entities_to_table(
-        self, entities: Iterator[dict[str, Any]], table_name: str, incremental: bool, primary_keys: list[str]
-    ) -> int:
-        """
-        Write entities to output table as CSV.
-
-        Flattens nested structures and handles various data types.
-
-        Args:
-            entities: Iterator of entity dictionaries from API.
-            table_name: Name of the output table.
-            incremental: Whether to use incremental mode.
-            primary_keys: List of primary key columns.
-
-        Returns:
-            Number of records written.
-        """
-        # Collect all records and determine all columns
-        flattened_records = []
-        all_columns: set[str] = set()
-
-        for entity in entities:
-            flattened = self._flatten_entity(entity)
-            flattened_records.append(flattened)
-            all_columns.update(flattened.keys())
-
-        records_written = len(flattened_records)
-        csv_columns = sorted(all_columns)
-
-        if records_written > 0:
-            table = self.create_out_table_definition(name=table_name, incremental=incremental, primary_key=primary_keys)
-            logging.info(f"Table full_path: {table.full_path}")
-            logging.info(f"Writing {records_written} records to {table.full_path}")
-
-            with open(table.full_path, mode="w", encoding="utf-8", newline="") as out_file:
-                writer = csv.DictWriter(out_file, fieldnames=csv_columns)
-                writer.writeheader()
-                for record in flattened_records:
-                    writer.writerow(record)
-
-            logging.info("File written, now writing manifest")
-            # Write manifest after all data is written
-            self.write_manifest(table)
-            logging.info(f"Manifest written for table: {table_name}")
-
-        return records_written
-
-    @staticmethod
-    def _flatten_entity(entity: dict[str, Any], parent_key: str = "", sep: str = "_") -> dict[str, Any]:
-        """
-        Flatten nested dictionary structure.
-
-        Converts nested dictionaries to flat structure with concatenated keys.
-        Example: {'a': {'b': 1}} becomes {'a_b': 1}
-
-        Args:
-            entity: Entity dictionary to flatten.
-            parent_key: Parent key for nested structures.
-            sep: Separator for concatenating keys.
-
-        Returns:
-            Flattened dictionary.
-        """
-        items: list[tuple[str, Any]] = []
-
-        for key, value in entity.items():
-            new_key = f"{parent_key}{sep}{key}" if parent_key else key
-
-            if isinstance(value, dict) and value:
-                # Recursively flatten nested dictionaries
-                items.extend(Component._flatten_entity(value, new_key, sep).items())
-            elif isinstance(value, dict):
-                # Skip empty dicts — nothing to flatten, no value to emit
-                pass
-            elif isinstance(value, list):
-                # Convert lists to JSON-like string representation
-                items.append((new_key, str(value)))
-            else:
-                # Keep primitive values as-is
-                items.append((new_key, value))
-
-        return dict(items)
-
-    def _update_state(self) -> None:
-        """Update local state file with last run timestamp."""
-        if self._state is None:
-            self._state = {}
-
-        self._state["last_run_timestamp"] = datetime.now().isoformat()
-
-        logging.info("Writing last_run_timestamp to local state file")
-        self.write_state_file(self._state)
-        logging.debug("Local state file updated")
 
     @sync_action("listTenantVersions")
     def list_tenant_versions(self):
@@ -405,7 +221,6 @@ class Component(ComponentBase):
 
         Returns list of endpoints for dropdown selection in UI.
         """
-        # Get tenant_version from first endpoint config
         if not self.config.endpoints:
             raise UserException("Tenant/Version must be selected first to list endpoints")
 
@@ -422,7 +237,6 @@ class Component(ComponentBase):
 
         Returns list of field names that can be used as primary keys.
         """
-        # Get values from first endpoint config
         if not self.config.endpoints:
             raise UserException("Endpoint must be configured first")
 
@@ -435,38 +249,17 @@ class Component(ComponentBase):
         if not endpoint:
             raise UserException("Endpoint must be selected first")
 
-        # Fetch swagger data
         swagger_data = self.client.get_swagger_data(tenant_version)
-
-        # Parse swagger to get entity fields
         parser = SwaggerParser(swagger_data)
         columns = parser.get_entity_primary_key_candidates(endpoint)
 
         if not columns:
             raise UserException(f"No columns found in the schema for endpoint '{endpoint}'.")
 
-        # Return in the format expected by the UI
-        result = []
-        for col in columns:
-            result.append(
-                {
-                    "label": col.name + (" (required)" if col.required else ""),
-                    "value": col.name,
-                }
-            )
-        return result
-
-
-"""
-Main entrypoint
-"""
-if __name__ == "__main__":
-    try:
-        comp = Component()
-        comp.execute_action()
-    except UserException as exc:
-        logging.exception(exc)
-        sys.exit(1)
-    except Exception as exc:
-        logging.exception(exc)
-        sys.exit(2)
+        return [
+            {
+                "label": col.name + (" (required)" if col.required else ""),
+                "value": col.name,
+            }
+            for col in columns
+        ]
