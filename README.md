@@ -265,7 +265,7 @@ uv run python src/component.py
 Run tests:
 
 ```bash
-uv run python -m unittest tests.test_component -v
+uv run pytest tests/ -v
 ```
 
 Code formatting and linting:

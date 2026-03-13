@@ -7,7 +7,7 @@ Defines the structure of configuration parameters using Pydantic models.
 import logging
 
 from keboola.component.exceptions import UserException
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class Destination(BaseModel):
@@ -30,6 +30,8 @@ class EndpointConfig(BaseModel):
 
 class Configuration(BaseModel):
     """Main configuration for Acumatica extractor component."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     # Global configuration settings
     acumatica_url: str  # Full URL including instance path

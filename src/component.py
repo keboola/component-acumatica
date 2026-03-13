@@ -366,6 +366,9 @@ class Component(ComponentBase):
             if isinstance(value, dict) and value:
                 # Recursively flatten nested dictionaries
                 items.extend(Component._flatten_entity(value, new_key, sep).items())
+            elif isinstance(value, dict):
+                # Skip empty dicts — nothing to flatten, no value to emit
+                pass
             elif isinstance(value, list):
                 # Convert lists to JSON-like string representation
                 items.append((new_key, str(value)))

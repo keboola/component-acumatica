@@ -222,14 +222,14 @@ class AcumaticaClient:
                 logging.error(f"Response body: {e.response.text}")
                 try:
                     error_data = e.response.json()
-                    if error_data.get("error") == "invalid_grant":
-                        raise ValueError(
-                            "Refresh token is invalid or expired. "
-                            "Both access_token and refresh_token need to be regenerated. "
-                            "Please get new tokens using: ./scripts/oauth_helper.sh"
-                        )
                 except Exception:
-                    pass
+                    error_data = {}
+                if error_data.get("error") == "invalid_grant":
+                    raise ValueError(
+                        "Refresh token is invalid or expired. "
+                        "Both access_token and refresh_token need to be regenerated. "
+                        "Please get new tokens using: ./scripts/oauth_helper.sh"
+                    )
             raise ValueError("Failed to refresh OAuth token. Please get a new token using: ./scripts/oauth_helper.sh")
 
     def _authenticate_username_password(self) -> None:
