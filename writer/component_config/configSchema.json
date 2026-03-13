@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "title": "Acumatica Writer Configuration",
+  "required": [
+    "acumatica_url",
+    "tables"
+  ],
+  "properties": {
+    "acumatica_url": {
+      "type": "string",
+      "title": "Acumatica URL",
+      "description": "Full URL to your Acumatica instance (e.g., https://your-instance.acumatica.com)",
+      "format": "uri",
+      "propertyOrder": 1
+    },
+    "tables": {
+      "type": "array",
+      "title": "Tables",
+      "description": "List of input tables to write into Acumatica",
+      "propertyOrder": 2,
+      "items": {
+        "type": "object",
+        "title": "Table Configuration",
+        "required": [
+          "tenant_version",
+          "endpoint",
+          "input_table"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "format": "checkbox",
+            "title": "Enabled",
+            "default": true,
+            "propertyOrder": 1
+          },
+          "tenant_version": {
+            "type": "string",
+            "title": "Tenant / Version",
+            "description": "Acumatica tenant and API version (e.g., Default/25.200.001)",
+            "propertyOrder": 2,
+            "enum": [],
+            "options": {
+              "async": {
+                "action": "listTenantVersions",
+                "label": "Load Tenants & Versions"
+              }
+            }
+          },
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint Name",
+            "description": "Acumatica entity endpoint to write into (e.g., Customer, SalesOrder)",
+            "propertyOrder": 3,
+            "enum": [],
+            "options": {
+              "async": {
+                "action": "listEndpoints",
+                "label": "Load Endpoints",
+                "watchFor": [
+                  "tenant_version"
+                ]
+              }
+            }
+          },
+          "input_table": {
+            "type": "string",
+            "title": "Input Table",
+            "description": "Input CSV table to read records from",
+            "propertyOrder": 4
+          }
+        }
+      }
+    }
+  }
+}

@@ -14,9 +14,9 @@ COPY packages/ packages/
 
 RUN uv sync --all-groups --frozen
 
-COPY extractor/src/ src/
+COPY writer/src/ src/
 COPY tests/ tests/
 COPY scripts/ scripts/
 COPY deploy.sh .
 
-CMD ["uv", "run", "--no-sync", "python", "-u", "src/extractor_component.py"]
+CMD ["uv", "run", "--no-sync", "python", "-u", "src/writer_component.py"]

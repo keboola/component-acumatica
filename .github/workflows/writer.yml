@@ -1,4 +1,4 @@
-name: Extractor Build & Deploy Pipeline
+name: Writer Build & Deploy Pipeline
 on:
   push:  # skip the workflow on the main branch without tags
     branches-ignore:
@@ -7,13 +7,13 @@ on:
       - "*"
     paths:
       - "packages/**"
-      - "extractor/**"
-      - ".github/workflows/extractor.yml"
+      - "writer/**"
+      - ".github/workflows/writer.yml"
 
 concurrency: ci-${{ github.ref }}  # to avoid tag collisions in the ECR
 env:
   # repository variables:
-  KBC_DEVELOPERPORTAL_APP: keboola.ex-acumatica
+  KBC_DEVELOPERPORTAL_APP: keboola.wr-acumatica
   KBC_DEVELOPERPORTAL_VENDOR: keboola
   DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
   KBC_DEVELOPERPORTAL_USERNAME: ${{ vars.KBC_DEVELOPERPORTAL_USERNAME }}
@@ -101,7 +101,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./extractor/Dockerfile
+          file: ./writer/Dockerfile
           tags: ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest
           outputs: type=docker,dest=/tmp/${{ env.KBC_DEVELOPERPORTAL_APP }}.tar
 
@@ -231,4 +231,4 @@ jobs:
       - name: Update developer portal properties
         run: |
           chmod +x scripts/developer_portal/*.sh
-          scripts/developer_portal/update_properties.sh extractor
+          scripts/developer_portal/update_properties.sh writer

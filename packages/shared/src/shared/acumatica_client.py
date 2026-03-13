@@ -520,3 +520,36 @@ class AcumaticaClient:
         endpoints = [{"label": name, "value": name} for name in sorted(entity_names)]
         logging.info(f"Found {len(endpoints)} GET endpoints")
         return endpoints
+
+    def put_entity(self, tenant_version: str, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Upsert a single entity via PUT.
+
+        Acumatica uses PUT for both create and update (upsert). The entity is
+        identified by its natural key fields included in the payload.
+
+        Args:
+            tenant_version: Tenant/version string (e.g., 'Default/25.200.001').
+            endpoint: Entity endpoint name (e.g., 'Customer', 'SalesOrder').
+            payload: Entity fields as a flat dict — values are wrapped automatically
+                     into Acumatica's {"value": ...} format.
+
+        Returns:
+            The created/updated entity as returned by the API.
+
+        Raises:
+            RuntimeError: If not authenticated.
+            requests.exceptions.RequestException: If the API request fails.
+        """
+        if not self._authenticated:
+            raise RuntimeError("Not authenticated. Call authenticate() first.")
+
+        endpoint_url = f"{self.base_url}/entity/{tenant_version}/{endpoint}"
+
+        # Wrap each field value into Acumatica's {"value": ...} format
+        wrapped = {k: {"value": v} for k, v in payload.items()}
+
+        logging.debug(f"PUT {endpoint_url} — {len(wrapped)} fields")
+        response = self.session.put(endpoint_url, json=wrapped, timeout=60)
+        response.raise_for_status()
+        return response.json()
