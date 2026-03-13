@@ -10,7 +10,7 @@ import pytest
 from extractor_component import Component
 from keboola.component.exceptions import UserException
 
-from .conftest import read_csv, read_state, write_config, write_state
+from ..conftest import read_csv, read_state, write_config, write_state
 
 BASE_PARAMS = {
     "acumatica_url": "https://example.acumatica.com",

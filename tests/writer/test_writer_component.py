@@ -12,7 +12,7 @@ import pytest
 from keboola.component.exceptions import UserException
 from writer_component import Component
 
-from .conftest import write_config
+from ..conftest import write_config
 
 BASE_PARAMS = {
     "acumatica_url": "https://example.acumatica.com",
