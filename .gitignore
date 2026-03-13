@@ -9,5 +9,7 @@ __pycache__/
 *.py[cod]
 venv
 
-# kbc datafolder
-data
+# kbc datafolders
+data/
+data-extractor/
+data-writer/
