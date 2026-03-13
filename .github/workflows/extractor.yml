@@ -132,7 +132,7 @@ jobs:
           docker load --input /tmp/${{ env.KBC_DEVELOPERPORTAL_APP }}.tar
           docker image ls -a
           echo "Running unit-tests..."
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest uv run --no-sync pytest tests/
+          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest uv run --no-sync pytest tests/extractor/ tests/shared/
 
   tests-kbc:
     name: Run KBC Tests

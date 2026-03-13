@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
 
-from configuration import Configuration, EndpointConfig
+from extractor_configuration import Configuration, EndpointConfig
 from keboola.component.base import ComponentBase
 from keboola.component.exceptions import UserException
 from shared.acumatica_base import AcumaticaSyncActionsMixin

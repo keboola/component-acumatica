@@ -5,7 +5,7 @@ Tests for the Configuration class — defaults, aliases, URL validation, and deb
 import logging
 
 import pytest
-from configuration import Configuration, Destination, EndpointConfig
+from extractor_configuration import Configuration, Destination, EndpointConfig
 from keboola.component.exceptions import UserException
 
 BASE_URL = "https://example.acumatica.com"
