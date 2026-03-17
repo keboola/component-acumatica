@@ -122,6 +122,25 @@ class SwaggerParser:
 
         return None
 
+    def get_entity_fields(self, entity_name: str) -> list[SwaggerColumn]:
+        """
+        Get all fields for an entity from its swagger schema.
+
+        Args:
+            entity_name: Name of the entity.
+
+        Returns:
+            List of all SwaggerColumn fields for the entity.
+        """
+        schema = self._find_entity_schema(entity_name)
+        if not schema:
+            return []
+
+        properties = self._extract_all_properties(schema)
+        required_fields = set(schema.get("required", []))
+
+        return [SwaggerColumn(name=name, required=name in required_fields) for name in properties.keys()]
+
     def get_entity_primary_key_candidates(self, entity_name: str) -> list[SwaggerColumn]:
         """
         Get likely primary key candidates from entity schema.

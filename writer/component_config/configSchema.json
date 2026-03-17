@@ -3,7 +3,9 @@
   "title": "Acumatica Writer Configuration",
   "required": [
     "acumatica_url",
-    "tables"
+    "tenant_version",
+    "endpoint",
+    "table_name"
   ],
   "properties": {
     "acumatica_url": {
@@ -13,62 +15,117 @@
       "format": "uri",
       "propertyOrder": 1
     },
-    "tables": {
-      "type": "array",
-      "title": "Tables",
-      "description": "List of input tables to write into Acumatica",
+    "tenant_version": {
+      "type": "string",
+      "title": "Tenant / Version",
+      "description": "Acumatica tenant and API version (e.g., Default/25.200.001)",
       "propertyOrder": 2,
+      "enum": [],
+      "options": {
+        "async": {
+          "action": "listTenantVersions",
+          "label": "Load Tenants & Versions"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "string",
+      "title": "Endpoint Name",
+      "description": "Acumatica entity endpoint to write into (e.g., Customer, SalesOrder)",
+      "propertyOrder": 3,
+      "enum": [],
+      "options": {
+        "async": {
+          "action": "listEndpoints",
+          "label": "Load Endpoints",
+          "watchFor": [
+            "tenant_version"
+          ]
+        }
+      }
+    },
+    "table_name": {
+      "type": "string",
+      "title": "Input Table",
+      "description": "Select the input table to read from",
+      "propertyOrder": 4,
+      "enum": [],
+      "options": {
+        "async": {
+          "action": "listInputTables",
+          "label": "Load Input Tables"
+        }
+      }
+    },
+    "field_mapping": {
+      "type": "array",
+      "title": "Field Mapping",
+      "format": "table",
+      "description": "Map input table columns to Acumatica API fields. Use 'Load Field Mapping' to auto-populate.",
+      "propertyOrder": 5,
       "items": {
         "type": "object",
-        "title": "Table Configuration",
-        "required": [
-          "tenant_version",
-          "endpoint",
-          "input_table"
-        ],
+        "required": ["source_column", "destination_field"],
         "properties": {
-          "enabled": {
-            "type": "boolean",
-            "format": "checkbox",
-            "title": "Enabled",
-            "default": true,
-            "propertyOrder": 1
-          },
-          "tenant_version": {
+          "source_column": {
             "type": "string",
-            "title": "Tenant / Version",
-            "description": "Acumatica tenant and API version (e.g., Default/25.200.001)",
-            "propertyOrder": 2,
-            "enum": [],
+            "title": "Source Column",
             "options": {
-              "async": {
-                "action": "listTenantVersions",
-                "label": "Load Tenants & Versions"
-              }
+              "readOnly": true
             }
           },
-          "endpoint": {
+          "destination_field": {
             "type": "string",
-            "title": "Endpoint Name",
-            "description": "Acumatica entity endpoint to write into (e.g., Customer, SalesOrder)",
-            "propertyOrder": 3,
-            "enum": [],
-            "options": {
-              "async": {
-                "action": "listEndpoints",
-                "label": "Load Endpoints",
-                "watchFor": [
-                  "tenant_version"
-                ]
+            "title": "Destination Field",
+            "format": "select",
+            "watch": {
+              "api_fields": "_metadata_.api_fields"
+            },
+            "enumSource": [
+              {
+                "source": "api_fields",
+                "value": "{{item.field_name}}",
+                "title": "{{item.label}}"
               }
+            ],
+            "options": {
+              "tags": true
             }
-          },
-          "input_table": {
-            "type": "string",
-            "title": "Input Table",
-            "description": "Input CSV table to read records from",
-            "propertyOrder": 4
           }
+        }
+      }
+    },
+    "load_mapping": {
+      "type": "button",
+      "title": "Load Field Mapping",
+      "format": "sync-action",
+      "propertyOrder": 6,
+      "options": {
+        "async": {
+          "cache": false,
+          "action": "loadFieldMapping",
+          "label": "Load Field Mapping",
+          "autoload": ["endpoint", "table_name"]
+        }
+      }
+    },
+    "continue_on_error": {
+      "type": "boolean",
+      "format": "checkbox",
+      "title": "Continue on Error",
+      "description": "If enabled, failed records are written to an output table instead of stopping the job",
+      "default": false,
+      "propertyOrder": 7
+    },
+    "_metadata_": {
+      "type": "object",
+      "propertyOrder": 8,
+      "options": {
+        "hidden": true
+      },
+      "properties": {
+        "api_fields": {
+          "type": "array"
         }
       }
     }

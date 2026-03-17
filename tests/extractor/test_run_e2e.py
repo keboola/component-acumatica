@@ -4,6 +4,7 @@ End-to-end tests for Component.run() and sync actions.
 Mocks only the AcumaticaClient; uses real CSV/manifest verification.
 """
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,7 +13,7 @@ from keboola.component.exceptions import UserException
 
 from ..conftest import read_csv, read_state, write_config, write_state
 
-BASE_PARAMS = {
+BASE_PARAMS: dict[str, Any] = {
     "acumatica_url": "https://example.acumatica.com",
     "page_size": 100,
     "debug": False,
@@ -280,7 +281,7 @@ class TestSyncActionErrors:
         mocker.patch("shared.acumatica_base.AcumaticaClient", return_value=MagicMock())
         with pytest.raises(SystemExit):
             Component().get_output_columns()
-        assert "Endpoint must be configured" in capsys.readouterr().err
+        assert "Tenant/Version must be selected" in capsys.readouterr().err
 
     def test_get_output_columns_empty_tenant_version_raises(self, kbc_datadir, mocker, capsys):
         params = {

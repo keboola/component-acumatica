@@ -10,6 +10,14 @@ from keboola.component.exceptions import UserException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
+class EndpointConfigBase(BaseModel):
+    """Minimal base for endpoint configs shared by extractor and writer."""
+
+    enabled: bool = True
+    tenant_version: str = ""
+    endpoint: str = ""
+
+
 class AcumaticaConnectionConfig(BaseModel):
     """Shared Acumatica connection configuration — URL, credentials, page size."""
 
@@ -20,6 +28,7 @@ class AcumaticaConnectionConfig(BaseModel):
     acumatica_password: str = Field(default="", alias="#acumatica_password")
     page_size: int = 2500
     debug: bool = False
+    endpoints: list[EndpointConfigBase] = Field(default_factory=list)
 
     def __init__(self, **data: Any) -> None:
         try:

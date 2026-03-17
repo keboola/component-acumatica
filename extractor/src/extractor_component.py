@@ -12,12 +12,12 @@ from datetime import datetime
 from typing import Any
 
 from extractor_configuration import Configuration, EndpointConfig
-from keboola.component.base import ComponentBase
 from keboola.component.exceptions import UserException
 from shared.acumatica_base import AcumaticaSyncActionsMixin
 
 
-class Component(AcumaticaSyncActionsMixin, ComponentBase):
+class Component(AcumaticaSyncActionsMixin):
+    config: Configuration  # narrows mixin's AcumaticaConnectionConfig
     """
     Acumatica Extractor Component.
 

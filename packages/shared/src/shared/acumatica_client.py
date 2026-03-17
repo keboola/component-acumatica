@@ -551,5 +551,31 @@ class AcumaticaClient:
 
         logging.debug(f"PUT {endpoint_url} — {len(wrapped)} fields")
         response = self.session.put(endpoint_url, json=wrapped, timeout=60)
-        response.raise_for_status()
+        if not response.ok:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text
+
+            # Log a human-readable summary of field-level errors from Acumatica 422 responses
+            try:
+                if not isinstance(detail, dict):
+                    raise ValueError("Response is not JSON")
+                summary_parts = []
+                top_error = detail.get("error")
+                if top_error:
+                    summary_parts.append(str(top_error))
+                for field_name, field_value in detail.items():
+                    if not isinstance(field_value, dict):
+                        continue
+                    field_error = field_value.get("error")
+                    if field_error:
+                        summary_parts.append(f"  {field_name}: {field_error}")
+                if not summary_parts:
+                    raise ValueError("No error fields found")
+                logging.error(f"PUT {endpoint_url} failed ({response.status_code}):\n" + "\n".join(summary_parts))
+            except Exception:
+                logging.error(f"PUT {endpoint_url} failed ({response.status_code}): {detail}")
+
+            response.raise_for_status()
         return response.json()

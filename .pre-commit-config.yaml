@@ -22,6 +22,13 @@ repos:
         types: [python]
         pass_filenames: false
 
+      - id: ty-check
+        name: ty type check (warnings only)
+        entry: bash -c 'output=$(uv run ty check 2>&1); if echo "$output" | grep -q "All checks passed"; then echo "✅ $output"; else echo "❌ $output"; fi; true'
+        language: system
+        types: [python]
+        pass_filenames: false
+        verbose: true
 
       - id: pytest
         name: pytest

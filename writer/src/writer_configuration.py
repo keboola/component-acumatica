@@ -10,19 +10,21 @@ from pydantic import BaseModel, Field
 from shared.connection import AcumaticaConnectionConfig
 
 
-class TableConfig(BaseModel):
-    """Configuration for a single table to write."""
+class FieldMapping(BaseModel):
+    """Maps a source CSV column to an Acumatica API destination field."""
 
-    enabled: bool = True
-    tenant_version: str = ""  # Format: "tenant/version" (e.g., "Default/25.200.001")
-    endpoint: str = ""  # e.g., 'Customer', 'SalesOrder'
-    input_table: str = ""  # Input CSV table filename (e.g., 'customers.csv')
+    source_column: str = ""
+    destination_field: str = ""
 
 
 class Configuration(AcumaticaConnectionConfig):
-    """Acumatica Writer configuration — connection + write settings."""
+    """Acumatica Writer configuration — single endpoint + write settings."""
 
-    tables: list[TableConfig] = Field(default_factory=list)
+    tenant_version: str = ""  # Format: "tenant/version" (e.g., "Default/25.200.001")
+    endpoint: str = ""  # e.g., 'Customer', 'SalesOrder'
+    table_name: str = ""  # Destination name matching Keboola input table mapping
+    field_mapping: list[FieldMapping] = Field(default_factory=list)
+    continue_on_error: bool = False
 
     def __init__(self, **data):
         super().__init__(**data)
