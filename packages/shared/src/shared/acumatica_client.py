@@ -573,7 +573,10 @@ class AcumaticaClient:
                         summary_parts.append(f"  {field_name}: {field_error}")
                 if not summary_parts:
                     raise ValueError("No error fields found")
-                logging.error(f"PUT {endpoint_url} failed ({response.status_code}):\n" + "\n".join(summary_parts))
+                logging.error(
+                    f"PUT {endpoint_url} failed ({response.status_code}):\n" + "\n".join(summary_parts),
+                    extra={"full_message": detail},
+                )
             except Exception:
                 logging.error(f"PUT {endpoint_url} failed ({response.status_code}): {detail}")
 
