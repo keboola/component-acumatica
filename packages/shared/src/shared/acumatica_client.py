@@ -10,9 +10,9 @@ Handles all interactions with the Acumatica REST API including:
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -376,8 +376,7 @@ class AcumaticaClient:
 
                 logging.debug(f"Retrieved {len(entities)} entities (skip: {skip})")
 
-                for entity in entities:
-                    yield entity
+                yield from entities
 
                 # Check if there are more records
                 if len(entities) < top:

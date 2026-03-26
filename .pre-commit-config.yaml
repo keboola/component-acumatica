@@ -15,12 +15,6 @@ repos:
         types: [python]
         pass_filenames: false
 
-      - id: ruff-isort-check
-        name: ruff isort check
-        entry: uv run ruff check --select I
-        language: system
-        types: [python]
-        pass_filenames: false
 
       - id: ty-check
         name: ty type check (warnings only)

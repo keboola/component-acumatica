@@ -13,7 +13,10 @@ from typing import Any
 
 from extractor_configuration import Configuration, EndpointConfig
 from keboola.component.exceptions import UserException
+from keboola.vcr.sanitizers import IPv4UrlSanitizer
 from shared.acumatica_base import AcumaticaSyncActionsMixin
+
+VCR_SANITIZERS = [IPv4UrlSanitizer()]
 
 
 class Component(AcumaticaSyncActionsMixin):

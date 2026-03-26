@@ -14,7 +14,8 @@ COPY packages/ packages/
 
 RUN uv sync --all-groups --frozen
 
-COPY extractor/src/ src/
-COPY tests/ tests/
+COPY extractor/src/ extractor/src/
+# datadirtest creates dirs inside test fixtures at runtime, so the keboola user needs write access
+COPY --chown=1000:1000 tests/ tests/
 
-CMD ["uv", "run", "--no-sync", "python", "-u", "src/extractor_component.py"]
+CMD ["uv", "run", "--no-sync", "python", "-u", "extractor/src/extractor_component.py"]

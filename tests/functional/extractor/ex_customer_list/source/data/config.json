@@ -1,0 +1,25 @@
+{
+  "parameters": {
+    "acumatica_url": "https://REDACTED-IPV4/AcumaticaERP",
+    "acumatica_username": "admin",
+    "#acumatica_password": "PLACEHOLDER_PASSWORD",
+    "page_size": 5,
+    "debug": false,
+    "endpoints": [
+      {
+        "enabled": true,
+        "tenant_version": "Default/25.200.001",
+        "endpoint": "Customer",
+        "expand": "",
+        "filter_expr": "",
+        "select": "",
+        "primary_keys": [
+          "CustomerID_value"
+        ]
+      }
+    ],
+    "destination": {
+      "load_type": "full_load"
+    }
+  }
+}

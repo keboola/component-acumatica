@@ -12,8 +12,11 @@ from typing import Any
 
 from keboola.component.base import sync_action
 from keboola.component.exceptions import UserException
+from keboola.vcr.sanitizers import IPv4UrlSanitizer
 from shared.acumatica_base import AcumaticaSyncActionsMixin
 from writer_configuration import Configuration, FieldMapping
+
+VCR_SANITIZERS = [IPv4UrlSanitizer()]
 
 
 class Component(AcumaticaSyncActionsMixin):
