@@ -1,20 +1,18 @@
 services:
-  # for development purposes
-  dev:
-    build: .
+  extractor:
+    build:
+      context: .
+      dockerfile: extractor/Dockerfile
     volumes:
-        - ./:/code
-        - ./data:/data
+      - ./data-extractor:/data
     environment:
-      - KBC_DATADIR=./data
-  test:
-    # Use to run flake8 and unittests checks
-    build: .
+      - KBC_DATADIR=/data
+
+  writer:
+    build:
+      context: .
+      dockerfile: writer/Dockerfile
     volumes:
-      - ./:/code
-      - ./data:/data
+      - ./data-writer:/data
     environment:
-      - KBC_DATADIR=./data
-    command:
-      - /bin/sh
-      - /code/scripts/build_n_test.sh
+      - KBC_DATADIR=/data

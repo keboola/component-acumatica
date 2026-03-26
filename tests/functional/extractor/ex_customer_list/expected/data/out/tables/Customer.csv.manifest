@@ -1,0 +1,9 @@
+{
+  "incremental": false,
+  "primary_key": [
+    "CustomerID_value"
+  ],
+  "write_always": false,
+  "delimiter": ",",
+  "enclosure": "\""
+}

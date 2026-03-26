@@ -1,0 +1,31 @@
+{
+  "parameters": {
+    "acumatica_url": "https://REDACTED-IPV4/AcumaticaERP",
+    "acumatica_username": "admin",
+    "#acumatica_password": "PLACEHOLDER_PASSWORD",
+    "debug": false,
+    "tenant_version": "Default/25.200.001",
+    "endpoint": "Customer",
+    "table_name": "customers.csv",
+    "field_mapping": [
+      {
+        "source_column": "CustomerID",
+        "destination_field": "CustomerID"
+      },
+      {
+        "source_column": "CustomerName",
+        "destination_field": "CustomerName"
+      }
+    ],
+    "continue_on_error": false
+  },
+  "storage": {
+    "input": {
+      "tables": [
+        {
+          "destination": "customers.csv"
+        }
+      ]
+    }
+  }
+}

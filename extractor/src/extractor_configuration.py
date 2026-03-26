@@ -6,8 +6,8 @@ Defines the structure of configuration parameters using Pydantic models.
 
 import logging
 
-from keboola.component.exceptions import UserException
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field
+from shared.connection import AcumaticaConnectionConfig
 
 
 class Destination(BaseModel):
@@ -28,16 +28,8 @@ class EndpointConfig(BaseModel):
     primary_keys: list[str] = Field(default_factory=list)  # Primary keys for this endpoint
 
 
-class Configuration(BaseModel):
+class Configuration(AcumaticaConnectionConfig):
     """Main configuration for Acumatica extractor component."""
-
-    # Global configuration settings
-    acumatica_url: str  # Full URL including instance path
-    acumatica_username: str = ""
-    acumatica_password: str = Field(default="", alias="#acumatica_password")
-
-    page_size: int = 2500
-    debug: bool = False
 
     # Endpoints to extract
     endpoints: list[EndpointConfig] = Field(default_factory=list)
@@ -46,20 +38,8 @@ class Configuration(BaseModel):
     destination: Destination = Field(default_factory=Destination)
 
     def __init__(self, **data):
-        try:
-            super().__init__(**data)
-        except ValidationError as e:
-            error_messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
-            raise UserException(f"Configuration validation error: {', '.join(error_messages)}")
+        super().__init__(**data)
 
         if self.debug:
             logging.getLogger().setLevel(logging.DEBUG)
             logging.debug("Component running in debug mode")
-
-    @field_validator("acumatica_url")
-    @classmethod
-    def validate_url(cls, v: str) -> str:
-        url = v.strip()
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("Acumatica URL must start with http:// or https://")
-        return url.rstrip("/")

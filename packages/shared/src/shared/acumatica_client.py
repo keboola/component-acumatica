@@ -10,9 +10,9 @@ Handles all interactions with the Acumatica REST API including:
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -222,14 +222,14 @@ class AcumaticaClient:
                 logging.error(f"Response body: {e.response.text}")
                 try:
                     error_data = e.response.json()
-                    if error_data.get("error") == "invalid_grant":
-                        raise ValueError(
-                            "Refresh token is invalid or expired. "
-                            "Both access_token and refresh_token need to be regenerated. "
-                            "Please get new tokens using: ./scripts/oauth_helper.sh"
-                        )
                 except Exception:
-                    pass
+                    error_data = {}
+                if error_data.get("error") == "invalid_grant":
+                    raise ValueError(
+                        "Refresh token is invalid or expired. "
+                        "Both access_token and refresh_token need to be regenerated. "
+                        "Please get new tokens using: ./scripts/oauth_helper.sh"
+                    )
             raise ValueError("Failed to refresh OAuth token. Please get a new token using: ./scripts/oauth_helper.sh")
 
     def _authenticate_username_password(self) -> None:
@@ -376,8 +376,7 @@ class AcumaticaClient:
 
                 logging.debug(f"Retrieved {len(entities)} entities (skip: {skip})")
 
-                for entity in entities:
-                    yield entity
+                yield from entities
 
                 # Check if there are more records
                 if len(entities) < top:
@@ -520,3 +519,65 @@ class AcumaticaClient:
         endpoints = [{"label": name, "value": name} for name in sorted(entity_names)]
         logging.info(f"Found {len(endpoints)} GET endpoints")
         return endpoints
+
+    def put_entity(self, tenant_version: str, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Upsert a single entity via PUT.
+
+        Acumatica uses PUT for both create and update (upsert). The entity is
+        identified by its natural key fields included in the payload.
+
+        Args:
+            tenant_version: Tenant/version string (e.g., 'Default/25.200.001').
+            endpoint: Entity endpoint name (e.g., 'Customer', 'SalesOrder').
+            payload: Entity fields as a flat dict — values are wrapped automatically
+                     into Acumatica's {"value": ...} format.
+
+        Returns:
+            The created/updated entity as returned by the API.
+
+        Raises:
+            RuntimeError: If not authenticated.
+            requests.exceptions.RequestException: If the API request fails.
+        """
+        if not self._authenticated:
+            raise RuntimeError("Not authenticated. Call authenticate() first.")
+
+        endpoint_url = f"{self.base_url}/entity/{tenant_version}/{endpoint}"
+
+        # Wrap each field value into Acumatica's {"value": ...} format
+        wrapped = {k: {"value": v} for k, v in payload.items()}
+
+        logging.debug(f"PUT {endpoint_url} — {len(wrapped)} fields")
+        response = self.session.put(endpoint_url, json=wrapped, timeout=60)
+        if not response.ok:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text
+
+            # Log a human-readable summary of field-level errors from Acumatica 422 responses
+            try:
+                if not isinstance(detail, dict):
+                    raise ValueError("Response is not JSON")
+                summary_parts = []
+                top_error = detail.get("error")
+                if top_error:
+                    summary_parts.append(str(top_error))
+                for field_name, field_value in detail.items():
+                    if not isinstance(field_value, dict):
+                        continue
+                    field_error = field_value.get("error")
+                    if field_error:
+                        summary_parts.append(f"  {field_name}: {field_error}")
+                if not summary_parts:
+                    raise ValueError("No error fields found")
+                logging.error(
+                    f"PUT {endpoint_url} failed ({response.status_code}):\n" + "\n".join(summary_parts),
+                    extra={"full_message": detail},
+                )
+            except Exception:
+                logging.error(f"PUT {endpoint_url} failed ({response.status_code}): {detail}")
+
+            response.raise_for_status()
+        return response.json()

@@ -9,5 +9,13 @@ __pycache__/
 *.py[cod]
 venv
 
-# kbc datafolder
-data
+# kbc datafolders
+data/
+data-extractor/
+data-writer/
+
+# VCR test secrets and runtime dirs
+secrets.json
+tests/functional/*/source/data/out/
+tests/functional/*/source/data/in/
+test_push.py

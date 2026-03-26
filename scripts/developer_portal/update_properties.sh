@@ -8,6 +8,15 @@ if [ -z "$KBC_DEVELOPERPORTAL_APP" ]; then
     exit 1
 fi
 
+# Require extractor|writer argument to locate component_config/
+component="${1:-}"
+if [ -z "$component" ]; then
+    echo "Error: component argument required (extractor or writer)."
+    exit 1
+fi
+
+config_dir="${component}/component_config"
+
 # Pull the latest version of the developer portal CLI Docker image
 docker pull quay.io/keboola/developer-portal-cli-v2:latest
 
@@ -42,20 +51,20 @@ update_property() {
 
 app_id="$KBC_DEVELOPERPORTAL_APP"
 
-update_property "$app_id" "isDeployReady" "component_config/isDeployReady.md"
-update_property "$app_id" "longDescription" "component_config/component_long_description.md"
-update_property "$app_id" "configurationSchema" "component_config/configSchema.json"
-update_property "$app_id" "configurationRowSchema" "component_config/configRowSchema.json"
-update_property "$app_id" "configurationDescription" "component_config/configuration_description.md"
-update_property "$app_id" "shortDescription" "component_config/component_short_description.md"
-update_property "$app_id" "logger" "component_config/logger"
-update_property "$app_id" "loggerConfiguration" "component_config/loggerConfiguration.json"
-update_property "$app_id" "licenseUrl" "component_config/licenseUrl.md"
-update_property "$app_id" "documentationUrl" "component_config/documentationUrl.md"
-update_property "$app_id" "sourceCodeUrl" "component_config/sourceCodeUrl.md"
-update_property "$app_id" "uiOptions" "component_config/uiOptions.md"
+update_property "$app_id" "isDeployReady" "${config_dir}/isDeployReady.md"
+update_property "$app_id" "longDescription" "${config_dir}/component_long_description.md"
+update_property "$app_id" "configurationSchema" "${config_dir}/configSchema.json"
+update_property "$app_id" "configurationRowSchema" "${config_dir}/configRowSchema.json"
+update_property "$app_id" "configurationDescription" "${config_dir}/configuration_description.md"
+update_property "$app_id" "shortDescription" "${config_dir}/component_short_description.md"
+update_property "$app_id" "logger" "${config_dir}/logger"
+update_property "$app_id" "loggerConfiguration" "${config_dir}/loggerConfiguration.json"
+update_property "$app_id" "licenseUrl" "${config_dir}/licenseUrl.md"
+update_property "$app_id" "documentationUrl" "${config_dir}/documentationUrl.md"
+update_property "$app_id" "sourceCodeUrl" "${config_dir}/sourceCodeUrl.md"
+update_property "$app_id" "uiOptions" "${config_dir}/uiOptions.md"
 
 # Update the actions.md file
 source "$(dirname "$0")/fn_actions_md_update.sh"
 # update_property actions
-update_property "$app_id" "actions" "component_config/actions.md"
+update_property "$app_id" "actions" "${config_dir}/actions.md"
