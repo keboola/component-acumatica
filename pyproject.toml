@@ -30,6 +30,9 @@ testpaths = ["tests/extractor", "tests/writer", "tests/shared"]
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.lint]
+extend-select = ["I", "UP"]
+
 [tool.ty.environment]
 extra-paths = ["extractor/src", "writer/src"]
 
