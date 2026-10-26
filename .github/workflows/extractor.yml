@@ -9,6 +9,7 @@ on:
       - "packages/**"
       - "extractor/**"
       - ".github/workflows/extractor.yml"
+      - "scripts/**"
 
 concurrency: ci-${{ github.ref }}  # to avoid tag collisions in the ECR
 env:
